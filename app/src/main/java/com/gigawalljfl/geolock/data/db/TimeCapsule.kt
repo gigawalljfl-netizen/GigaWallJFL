@@ -44,9 +44,11 @@ data class TimeCapsule(
     val cipherTextBase64: String,
     val ivBase64: String,
 
-    // Caminho local de mídia anexada, também cifrada (opcional)
+    // Caminho local de anexo cifrado (foto, PDF, áudio, qualquer arquivo)
     val encryptedMediaPath: String? = null,
     val mediaIvBase64: String? = null,
+    val attachmentFileName: String? = null,
+    val attachmentMimeType: String? = null,
 
     val environmentalLock: EnvironmentalLock = EnvironmentalLock.NONE,
     val difficulty: Difficulty = Difficulty.RECRUTA,

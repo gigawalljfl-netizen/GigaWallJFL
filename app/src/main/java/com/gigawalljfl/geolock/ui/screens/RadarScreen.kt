@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.IosShare
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Icon
@@ -45,7 +46,8 @@ fun RadarScreen(
     onCreateCapsule: () -> Unit,
     onOpenAr: (String) -> Unit,
     onScanQr: () -> Unit,
-    onExportQr: (String) -> Unit
+    onExportQr: (String) -> Unit,
+    onOpenMap: () -> Unit
 ) {
     val capsules by viewModel.capsules.collectAsState()
     val fix by viewModel.currentFix.collectAsState()
@@ -70,6 +72,9 @@ fun RadarScreen(
                 )
             }
             Row {
+                IconButton(onClick = onOpenMap) {
+                    Icon(Icons.Filled.Map, contentDescription = "Ver mapa tático", tint = NeonCyan)
+                }
                 IconButton(onClick = onScanQr) {
                     Icon(Icons.Filled.QrCodeScanner, contentDescription = "Escanear cápsula via QR", tint = MatrixGreen)
                 }

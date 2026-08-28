@@ -1,6 +1,7 @@
 package com.gigawalljfl.geolock
 
 import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -17,6 +18,7 @@ import androidx.navigation.compose.rememberNavController
 import com.gigawalljfl.geolock.ui.GeoLockViewModel
 import com.gigawalljfl.geolock.ui.screens.ArHudScreen
 import com.gigawalljfl.geolock.ui.screens.CapsuleDetailScreen
+import com.gigawalljfl.geolock.ui.screens.MapScreen
 import com.gigawalljfl.geolock.ui.screens.QrExportScreen
 import com.gigawalljfl.geolock.ui.screens.QrScanScreen
 import com.gigawalljfl.geolock.ui.screens.RadarScreen
@@ -27,11 +29,16 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: GeoLockViewModel by viewModels()
 
-    private val requiredPermissions = arrayOf(
-        Manifest.permission.ACCESS_FINE_LOCATION,
-        Manifest.permission.ACCESS_COARSE_LOCATION,
-        Manifest.permission.CAMERA
-    )
+    private val requiredPermissions: Array<String> by lazy {
+        buildList {
+            add(Manifest.permission.ACCESS_FINE_LOCATION)
+            add(Manifest.permission.ACCESS_COARSE_LOCATION)
+            add(Manifest.permission.CAMERA)
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+                add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            }
+        }.toTypedArray()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -69,7 +76,18 @@ class MainActivity : ComponentActivity() {
                                 onExportQr = { id ->
                                     viewModel.selectCapsule(id)
                                     navController.navigate("qrExport")
-                                }
+                                },
+                                onOpenMap = { navController.navigate("map") }
+                            )
+                        }
+                        composable("map") {
+                            MapScreen(
+                                viewModel = viewModel,
+                                onOpenCapsule = { id ->
+                                    viewModel.selectCapsule(id)
+                                    navController.navigate("detail")
+                                },
+                                onBack = { navController.popBackStack() }
                             )
                         }
                         composable("qrExport") {

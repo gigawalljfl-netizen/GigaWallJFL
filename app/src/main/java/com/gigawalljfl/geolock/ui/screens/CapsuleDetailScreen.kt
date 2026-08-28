@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,6 +36,8 @@ fun CapsuleDetailScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
     val selectedId by viewModel.selectedCapsuleId.collectAsState()
     val unlockResult by viewModel.unlockResult.collectAsState()
     val mediaBitmap by viewModel.decryptedMediaBitmap.collectAsState()
+    val attachmentBytes by viewModel.decryptedAttachmentBytes.collectAsState()
+    val saveFeedback by viewModel.saveFeedback.collectAsState()
     val capsule = capsules.firstOrNull { it.id == selectedId }
 
     var liveLux by remember { mutableStateOf<Float?>(null) }
@@ -101,14 +104,33 @@ fun CapsuleDetailScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
             is UnlockResult.Success -> {
                 Text("✅ DECODIFICADO:\n${result.plainText}", color = MatrixGreen)
                 Spacer(Modifier.height(12.dp))
-                mediaBitmap?.let { bmp ->
+
+                val isImageAttachment = capsule.attachmentMimeType?.startsWith("image/") == true
+                if (isImageAttachment && mediaBitmap != null) {
                     Text("Evidência multimídia anexada:", style = MaterialTheme.typography.labelSmall, color = MatrixGreen)
                     Spacer(Modifier.height(4.dp))
                     Image(
-                        bitmap = bmp.asImageBitmap(),
+                        bitmap = mediaBitmap!!.asImageBitmap(),
                         contentDescription = "Mídia decifrada da cápsula",
                         modifier = Modifier.fillMaxWidth()
                     )
+                } else if (attachmentBytes != null && capsule.attachmentFileName != null) {
+                    Text(
+                        "📎 Anexo: ${capsule.attachmentFileName} (${attachmentBytes!!.size / 1024} KB)",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MatrixGreen
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { viewModel.saveDecryptedAttachmentToDownloads(capsule) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("💾 SALVAR EM DOWNLOADS")
+                    }
+                    saveFeedback?.let { feedback ->
+                        Spacer(Modifier.height(4.dp))
+                        Text(feedback, style = MaterialTheme.typography.labelSmall, color = MatrixGreen)
+                    }
                 }
             }
             UnlockResult.TooFar -> Text("📡 Fora do raio de ${capsule.unlockRadiusMeters}m. Aproxime-se.", color = Magenta)

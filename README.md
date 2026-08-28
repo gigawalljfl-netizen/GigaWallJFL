@@ -14,9 +14,10 @@ Esqueleto funcional completo da arquitetura descrita na spec:
 - ✅ Sistema de gamificação (patentes, medalhas, XP)
 - ✅ Exportação de cápsulas via QR Code (tela `QrExportScreen`, gera bitmap com ZXing)
 - ✅ Importação de cápsulas via leitura de QR Code (tela `QrScanScreen`, usa zxing-android-embedded)
-- ✅ Anexo real de mídia: captura de foto (`TakePicturePreview`), cifrada com a mesma chave espaço-temporal e salva em `filesDir`; decifrada e exibida só após desbloqueio bem-sucedido
+- ✅ Anexo real de qualquer arquivo: captura de foto (`TakePicturePreview`) OU seleção de qualquer arquivo do dispositivo (`GetContent`, sem exigir permissão persistente) — cifrado com a mesma chave espaço-temporal e salvo em `filesDir`; ao desbloquear, imagens são exibidas inline e outros tipos ganham botão "Salvar em Downloads" (MediaStore no Android 10+, escrita direta em versões anteriores)
+- ✅ Mapa tático real (`MapScreen`, osmdroid/OpenStreetMap — sem API key nem billing do Google Maps): marcadores de cada cápsula, ponto de localização ao vivo do explorador, toque no marcador abre o detalhe
 - ✅ Verificação ativa da condição ambiental no desbloqueio: leitura de lux ao vivo para DARKNESS/SUNLIGHT, comparação de altitude (GPS) para ALTITUDE — com status em tempo real na tela
-- ✅ 6 telas Compose: Radar tático, Selamento de cápsula (com captura de foto), Detalhe/desbloqueio (com sensor ao vivo e mídia), HUD de AR com CameraX + mira por bússola, Exportar QR, Escanear QR
+- ✅ 7 telas Compose: Radar tático, Mapa, Selamento de cápsula (foto ou qualquer arquivo), Detalhe/desbloqueio (com sensor ao vivo e anexo), HUD de AR com CameraX + mira por bússola, Exportar QR, Escanear QR
 - ✅ Dark Cyber Theme (Neon Cyan / Magenta / Matrix Green)
 - ✅ Workflow de CI/CD (`.github/workflows/build.yml`) publicando o APK em GitHub Releases, Gradle fixado em 8.7
 

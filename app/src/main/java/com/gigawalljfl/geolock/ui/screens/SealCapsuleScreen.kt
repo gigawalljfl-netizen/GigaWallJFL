@@ -3,6 +3,7 @@
 package com.gigawalljfl.geolock.ui.screens
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -32,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,11 +42,16 @@ import androidx.compose.ui.unit.dp
 import com.gigawalljfl.geolock.data.db.Difficulty
 import com.gigawalljfl.geolock.data.db.EnvironmentalLock
 import com.gigawalljfl.geolock.ui.GeoLockViewModel
+import com.gigawalljfl.geolock.ui.PendingAttachment
 import com.gigawalljfl.geolock.ui.theme.MatrixGreen
 import com.gigawalljfl.geolock.ui.theme.NeonCyan
+import kotlinx.coroutines.launch
+import java.io.ByteArrayOutputStream
 
 @Composable
 fun SealCapsuleScreen(viewModel: GeoLockViewModel, onDone: () -> Unit) {
+    val coroutineScope = rememberCoroutineScope()
+
     var title by remember { mutableStateOf("") }
     var hint by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
@@ -52,11 +59,27 @@ fun SealCapsuleScreen(viewModel: GeoLockViewModel, onDone: () -> Unit) {
     var delayHours by remember { mutableStateOf("0") }
     var envLock by remember { mutableStateOf(EnvironmentalLock.NONE) }
     var difficulty by remember { mutableStateOf(Difficulty.RECRUTA) }
-    var photo by remember { mutableStateOf<Bitmap?>(null) }
+    var attachment by remember { mutableStateOf<PendingAttachment?>(null) }
 
     val cameraLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.TakePicturePreview()
-    ) { bitmap -> photo = bitmap }
+    ) { bitmap: Bitmap? ->
+        bitmap?.let { bmp ->
+            val stream = ByteArrayOutputStream()
+            bmp.compress(Bitmap.CompressFormat.JPEG, 85, stream)
+            attachment = PendingAttachment(stream.toByteArray(), "foto.jpg", "image/jpeg")
+        }
+    }
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            coroutineScope.launch {
+                attachment = viewModel.readAttachmentFromUri(uri)
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -111,25 +134,44 @@ fun SealCapsuleScreen(viewModel: GeoLockViewModel, onDone: () -> Unit) {
         )
 
         Spacer(Modifier.height(12.dp))
-        Text("Evidência multimídia (opcional)", style = MaterialTheme.typography.labelSmall, color = MatrixGreen)
+        Text("Anexo (opcional)", style = MaterialTheme.typography.labelSmall, color = MatrixGreen)
         Spacer(Modifier.height(4.dp))
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             OutlinedButton(onClick = { cameraLauncher.launch(null) }) {
-                Text(if (photo == null) "📷 CAPTURAR FOTO" else "📷 TROCAR FOTO")
+                Text("📷 FOTO")
             }
-            photo?.let { bmp ->
-                Spacer(Modifier.width(12.dp))
-                Image(
-                    bitmap = bmp.asImageBitmap(),
-                    contentDescription = "Foto anexada",
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                )
+            Spacer(Modifier.width(8.dp))
+            OutlinedButton(onClick = { filePickerLauncher.launch("*/*") }) {
+                Text("📎 ARQUIVO")
+            }
+        }
+
+        attachment?.let { att ->
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                if (att.mimeType.startsWith("image/")) {
+                    val bmp = remember(att) { BitmapFactory.decodeByteArray(att.bytes, 0, att.bytes.size) }
+                    bmp?.let {
+                        Image(
+                            bitmap = it.asImageBitmap(),
+                            contentDescription = "Anexo selecionado",
+                            modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp))
+                        )
+                        Spacer(Modifier.width(8.dp))
+                    }
+                }
+                Column {
+                    Text(att.fileName, style = MaterialTheme.typography.bodyMedium, color = NeonCyan)
+                    Text(
+                        "${att.mimeType} · ${att.bytes.size / 1024} KB",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MatrixGreen
+                    )
+                }
             }
         }
         Text(
-            "A foto é cifrada com a mesma chave espaço-temporal da mensagem — só é revelada junto com ela.",
+            "O anexo é cifrado com a mesma chave espaço-temporal da mensagem — só é revelado junto com ela.",
             style = MaterialTheme.typography.labelSmall,
             color = NeonCyan
         )
@@ -147,7 +189,7 @@ fun SealCapsuleScreen(viewModel: GeoLockViewModel, onDone: () -> Unit) {
                     unlockRadiusMeters = radius.toDoubleOrNull() ?: 1.5,
                     environmentalLock = envLock,
                     difficulty = difficulty,
-                    mediaBitmap = photo
+                    attachment = attachment
                 )
                 onDone()
             },

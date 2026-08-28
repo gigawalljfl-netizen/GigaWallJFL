@@ -31,9 +31,9 @@ class CapsuleRepository(
      * Sela uma nova cápsula. A chave de cifragem é derivada usando o
      * timestamp de DESBLOQUEIO (unlockAtEpochMillis), não o de criação —
      * assim a cápsula só pode ser aberta a partir do instante certo, no
-     * lugar certo. Se mediaBytes for fornecido (ex.: foto capturada), ele
-     * é cifrado com a MESMA chave espaço-temporal e salvo em disco; nunca
-     * fica em texto plano.
+     * lugar certo. Se attachmentBytes for fornecido (foto capturada OU
+     * qualquer arquivo do dispositivo), ele é cifrado com a MESMA chave
+     * espaço-temporal e salvo em disco; nunca fica em texto plano.
      */
     suspend fun sealCapsule(
         title: String,
@@ -46,16 +46,18 @@ class CapsuleRepository(
         unlockRadiusMeters: Double,
         environmentalLock: EnvironmentalLock,
         difficulty: Difficulty,
-        mediaBytes: ByteArray? = null
+        attachmentBytes: ByteArray? = null,
+        attachmentFileName: String? = null,
+        attachmentMimeType: String? = null
     ): TimeCapsule {
         val id = UUID.randomUUID().toString()
         val payload = SpaceTimeCrypto.encrypt(secretMessage, latitude, longitude, unlockAtEpochMillis)
 
         var mediaPath: String? = null
         var mediaIv: String? = null
-        if (mediaBytes != null) {
-            val (cipherBytes, iv) = SpaceTimeCrypto.encryptBytes(mediaBytes, latitude, longitude, unlockAtEpochMillis)
-            val file = File(appContext.filesDir, "capsule_$id.media.enc")
+        if (attachmentBytes != null) {
+            val (cipherBytes, iv) = SpaceTimeCrypto.encryptBytes(attachmentBytes, latitude, longitude, unlockAtEpochMillis)
+            val file = File(appContext.filesDir, "capsule_$id.attachment.enc")
             file.writeBytes(cipherBytes)
             mediaPath = file.absolutePath
             mediaIv = iv
@@ -74,6 +76,8 @@ class CapsuleRepository(
             ivBase64 = payload.ivBase64,
             encryptedMediaPath = mediaPath,
             mediaIvBase64 = mediaIv,
+            attachmentFileName = if (attachmentBytes != null) attachmentFileName else null,
+            attachmentMimeType = if (attachmentBytes != null) attachmentMimeType else null,
             environmentalLock = environmentalLock,
             difficulty = difficulty,
             createdAtEpochMillis = System.currentTimeMillis(),

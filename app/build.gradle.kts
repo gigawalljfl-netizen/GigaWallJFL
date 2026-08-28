@@ -13,8 +13,8 @@ android {
         applicationId = "com.gigawalljfl.geolock"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
     }
 
     buildTypes {
@@ -69,6 +69,9 @@ dependencies {
 
     // Location
     implementation("com.google.android.gms:play-services-location:21.3.0")
+
+    // Mapa tático (OpenStreetMap, sem necessidade de API key/billing)
+    implementation("org.osmdroid:osmdroid-android:6.1.20")
 
     // CameraX
     implementation("androidx.camera:camera-core:1.3.4")

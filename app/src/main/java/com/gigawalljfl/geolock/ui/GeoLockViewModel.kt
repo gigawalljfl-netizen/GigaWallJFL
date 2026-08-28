@@ -1,8 +1,14 @@
 package com.gigawalljfl.geolock.ui
 
 import android.app.Application
+import android.content.ContentValues
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.gigawalljfl.geolock.GeoLockApp
@@ -24,6 +30,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+
+/** Um anexo escolhido localmente na tela de selamento, ainda não cifrado. */
+data class PendingAttachment(
+    val bytes: ByteArray,
+    val fileName: String,
+    val mimeType: String
+)
 
 class GeoLockViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -46,6 +61,12 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
 
     private val _decryptedMediaBitmap = MutableStateFlow<Bitmap?>(null)
     val decryptedMediaBitmap: StateFlow<Bitmap?> = _decryptedMediaBitmap.asStateFlow()
+
+    private val _decryptedAttachmentBytes = MutableStateFlow<ByteArray?>(null)
+    val decryptedAttachmentBytes: StateFlow<ByteArray?> = _decryptedAttachmentBytes.asStateFlow()
+
+    private val _saveFeedback = MutableStateFlow<String?>(null)
+    val saveFeedback: StateFlow<String?> = _saveFeedback.asStateFlow()
 
     private val _importFeedback = MutableStateFlow<String?>(null)
     val importFeedback: StateFlow<String?> = _importFeedback.asStateFlow()
@@ -84,6 +105,26 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
         _selectedCapsuleId.value = id
         _unlockResult.value = null
         _decryptedMediaBitmap.value = null
+        _decryptedAttachmentBytes.value = null
+    }
+
+    /**
+     * Lê qualquer arquivo escolhido pelo usuário (via ActivityResultContracts.GetContent)
+     * a partir do seu Uri de conteúdo — nome, mimetype e bytes — sem exigir
+     * permissão persistente, já que o conteúdo é lido e cifrado imediatamente.
+     */
+    suspend fun readAttachmentFromUri(uri: Uri): PendingAttachment? = withContext(Dispatchers.IO) {
+        val resolver = getApplication<Application>().contentResolver
+        val mimeType = resolver.getType(uri) ?: "application/octet-stream"
+        var fileName = "arquivo"
+        resolver.query(uri, null, null, null, null)?.use { cursor ->
+            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (nameIndex >= 0 && cursor.moveToFirst()) {
+                fileName = cursor.getString(nameIndex) ?: fileName
+            }
+        }
+        val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
+        PendingAttachment(bytes, fileName, mimeType)
     }
 
     fun sealCapsule(
@@ -94,15 +135,10 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
         unlockRadiusMeters: Double,
         environmentalLock: EnvironmentalLock,
         difficulty: Difficulty,
-        mediaBitmap: Bitmap? = null
+        attachment: PendingAttachment? = null
     ) {
         val fix = _currentFix.value ?: return
         viewModelScope.launch {
-            val mediaBytes = mediaBitmap?.let { bmp ->
-                val stream = java.io.ByteArrayOutputStream()
-                bmp.compress(Bitmap.CompressFormat.JPEG, 85, stream)
-                stream.toByteArray()
-            }
             capsuleRepository.sealCapsule(
                 title = title,
                 hint = hint,
@@ -114,7 +150,9 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
                 unlockRadiusMeters = unlockRadiusMeters,
                 environmentalLock = environmentalLock,
                 difficulty = difficulty,
-                mediaBytes = mediaBytes
+                attachmentBytes = attachment?.bytes,
+                attachmentFileName = attachment?.fileName,
+                attachmentMimeType = attachment?.mimeType
             )
         }
     }
@@ -159,9 +197,52 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
     fun loadDecryptedMedia(capsule: TimeCapsule) {
         viewModelScope.launch(Dispatchers.IO) {
             val bytes = capsuleRepository.decryptMediaIfAny(capsule)
-            val bmp = bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
-            _decryptedMediaBitmap.value = bmp
+            _decryptedAttachmentBytes.value = bytes
+            val isImage = capsule.attachmentMimeType?.startsWith("image/") == true
+            _decryptedMediaBitmap.value = if (isImage && bytes != null) {
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            } else null
         }
+    }
+
+    /**
+     * Salva o anexo já decifrado (deve estar em decryptedAttachmentBytes)
+     * na pasta Downloads pública do dispositivo — usa MediaStore em
+     * Android 10+ e escrita direta em versões mais antigas.
+     */
+    fun saveDecryptedAttachmentToDownloads(capsule: TimeCapsule) {
+        val bytes = _decryptedAttachmentBytes.value ?: return
+        val fileName = capsule.attachmentFileName ?: "geolock_anexo_${capsule.id}"
+        val mimeType = capsule.attachmentMimeType ?: "application/octet-stream"
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val success = try {
+                val context = getApplication<Application>()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val values = ContentValues().apply {
+                        put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                        put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                    }
+                    val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                    uri?.let { context.contentResolver.openOutputStream(it)?.use { out -> out.write(bytes) } }
+                    uri != null
+                } else {
+                    @Suppress("DEPRECATION")
+                    val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    val file = File(downloadsDir, fileName)
+                    file.writeBytes(bytes)
+                    true
+                }
+            } catch (e: Exception) {
+                false
+            }
+            _saveFeedback.value = if (success) "Salvo em Downloads/$fileName" else "Não foi possível salvar o arquivo."
+        }
+    }
+
+    fun clearSaveFeedback() {
+        _saveFeedback.value = null
     }
 
     fun exportCapsuleAsQrPayload(capsule: TimeCapsule): String = CapsuleQrCodec.encode(capsule)
