@@ -114,7 +114,7 @@ fun SealCapsuleScreen(viewModel: GeoLockViewModel, onDone: () -> Unit) {
         Text("Evidência multimídia (opcional)", style = MaterialTheme.typography.labelSmall, color = MatrixGreen)
         Spacer(Modifier.height(4.dp))
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            OutlinedButton(onClick = { cameraLauncher.launch() }) {
+            OutlinedButton(onClick = { cameraLauncher.launch(null) }) {
                 Text(if (photo == null) "📷 CAPTURAR FOTO" else "📷 TROCAR FOTO")
             }
             photo?.let { bmp ->
