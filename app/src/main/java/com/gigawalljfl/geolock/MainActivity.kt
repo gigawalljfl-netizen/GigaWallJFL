@@ -17,6 +17,8 @@ import androidx.navigation.compose.rememberNavController
 import com.gigawalljfl.geolock.ui.GeoLockViewModel
 import com.gigawalljfl.geolock.ui.screens.ArHudScreen
 import com.gigawalljfl.geolock.ui.screens.CapsuleDetailScreen
+import com.gigawalljfl.geolock.ui.screens.QrExportScreen
+import com.gigawalljfl.geolock.ui.screens.QrScanScreen
 import com.gigawalljfl.geolock.ui.screens.RadarScreen
 import com.gigawalljfl.geolock.ui.screens.SealCapsuleScreen
 import com.gigawalljfl.geolock.ui.theme.GeoLockTheme
@@ -62,7 +64,24 @@ class MainActivity : ComponentActivity() {
                                 onOpenAr = { id ->
                                     viewModel.selectCapsule(id)
                                     navController.navigate("ar")
+                                },
+                                onScanQr = { navController.navigate("qrScan") },
+                                onExportQr = { id ->
+                                    viewModel.selectCapsule(id)
+                                    navController.navigate("qrExport")
                                 }
+                            )
+                        }
+                        composable("qrExport") {
+                            QrExportScreen(
+                                viewModel = viewModel,
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+                        composable("qrScan") {
+                            QrScanScreen(
+                                viewModel = viewModel,
+                                onDone = { navController.popBackStack() }
                             )
                         }
                         composable("seal") {

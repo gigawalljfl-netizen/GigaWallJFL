@@ -12,6 +12,6 @@ class GeoLockApp : Application() {
     override fun onCreate() {
         super.onCreate()
         val db = GeoLockDatabase.getInstance(this)
-        capsuleRepository = CapsuleRepository(db.timeCapsuleDao())
+        capsuleRepository = CapsuleRepository(db.timeCapsuleDao(), applicationContext)
     }
 }

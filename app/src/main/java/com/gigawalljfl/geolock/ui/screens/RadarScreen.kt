@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,14 +14,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.IosShare
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -43,7 +43,9 @@ fun RadarScreen(
     viewModel: GeoLockViewModel,
     onOpenCapsule: (String) -> Unit,
     onCreateCapsule: () -> Unit,
-    onOpenAr: (String) -> Unit
+    onOpenAr: (String) -> Unit,
+    onScanQr: () -> Unit,
+    onExportQr: (String) -> Unit
 ) {
     val capsules by viewModel.capsules.collectAsState()
     val fix by viewModel.currentFix.collectAsState()
@@ -67,8 +69,13 @@ fun RadarScreen(
                     color = MatrixGreen
                 )
             }
-            IconButton(onClick = onCreateCapsule) {
-                Icon(Icons.Filled.Add, contentDescription = "Selar nova cápsula", tint = Magenta)
+            Row {
+                IconButton(onClick = onScanQr) {
+                    Icon(Icons.Filled.QrCodeScanner, contentDescription = "Escanear cápsula via QR", tint = MatrixGreen)
+                }
+                IconButton(onClick = onCreateCapsule) {
+                    Icon(Icons.Filled.Add, contentDescription = "Selar nova cápsula", tint = Magenta)
+                }
             }
         }
 
@@ -97,7 +104,8 @@ fun RadarScreen(
                     capsule = capsule,
                     distanceMeters = viewModel.distanceToCapsule(capsule),
                     onOpen = { onOpenCapsule(capsule.id) },
-                    onAr = { onOpenAr(capsule.id) }
+                    onAr = { onOpenAr(capsule.id) },
+                    onExport = { onExportQr(capsule.id) }
                 )
             }
         }
@@ -139,7 +147,8 @@ private fun CapsuleCard(
     capsule: TimeCapsule,
     distanceMeters: Double?,
     onOpen: () -> Unit,
-    onAr: () -> Unit
+    onAr: () -> Unit,
+    onExport: () -> Unit
 ) {
     val statusColor = if (capsule.isUnlocked) MatrixGreen else Magenta
     Row(
@@ -159,6 +168,11 @@ private fun CapsuleCard(
                 style = MaterialTheme.typography.labelSmall,
                 color = statusColor
             )
+        }
+        if (capsule.isOwnedByCreator) {
+            IconButton(onClick = onExport) {
+                Icon(Icons.Filled.IosShare, contentDescription = "Exportar via QR", tint = MatrixGreen)
+            }
         }
         IconButton(onClick = onAr) {
             Icon(Icons.Filled.Visibility, contentDescription = "Abrir em AR", tint = NeonCyan)

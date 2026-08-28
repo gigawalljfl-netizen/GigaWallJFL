@@ -1,5 +1,6 @@
 package com.gigawalljfl.geolock.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,12 +12,18 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
 import com.gigawalljfl.geolock.data.db.EnvironmentalLock
 import com.gigawalljfl.geolock.data.repository.UnlockResult
+import com.gigawalljfl.geolock.sensors.SensorRepository
 import com.gigawalljfl.geolock.ui.GeoLockViewModel
 import com.gigawalljfl.geolock.ui.theme.MatrixGreen
 import com.gigawalljfl.geolock.ui.theme.Magenta
@@ -27,7 +34,25 @@ fun CapsuleDetailScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
     val capsules by viewModel.capsules.collectAsState()
     val selectedId by viewModel.selectedCapsuleId.collectAsState()
     val unlockResult by viewModel.unlockResult.collectAsState()
+    val mediaBitmap by viewModel.decryptedMediaBitmap.collectAsState()
     val capsule = capsules.firstOrNull { it.id == selectedId }
+
+    var liveLux by remember { mutableStateOf<Float?>(null) }
+
+    // Só liga o sensor de luz quando a cápsula exige DARKNESS/SUNLIGHT —
+    // evita gastar bateria à toa nas demais.
+    LaunchedEffect(capsule?.id) {
+        val lock = capsule?.environmentalLock
+        if (lock == EnvironmentalLock.DARKNESS || lock == EnvironmentalLock.SUNLIGHT) {
+            viewModel.observeLiveLux().collect { liveLux = it }
+        }
+    }
+
+    LaunchedEffect(unlockResult) {
+        if (unlockResult is UnlockResult.Success && capsule?.encryptedMediaPath != null) {
+            viewModel.loadDecryptedMedia(capsule)
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         TextButton(onClick = onBack) { Text("← VOLTAR", color = NeonCyan) }
@@ -47,16 +72,24 @@ fun CapsuleDetailScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
             style = MaterialTheme.typography.bodyMedium,
             color = NeonCyan
         )
+
+        val conditionMet = viewModel.isEnvironmentalConditionMet(capsule, liveLux)
+
+        if (capsule.environmentalLock != EnvironmentalLock.NONE) {
+            Spacer(Modifier.height(8.dp))
+            val statusText = when (capsule.environmentalLock) {
+                EnvironmentalLock.DARKNESS -> "🌑 Luz atual: ${liveLux?.toInt() ?: "--"} lux (precisa < ${SensorRepository.DARKNESS_THRESHOLD_LUX.toInt()})"
+                EnvironmentalLock.SUNLIGHT -> "☀️ Luz atual: ${liveLux?.toInt() ?: "--"} lux (precisa > ${SensorRepository.SUNLIGHT_THRESHOLD_LUX.toInt()})"
+                EnvironmentalLock.ALTITUDE -> "⛰️ Ganho de altitude necessário: ${SensorRepository.ALTITUDE_GAIN_METERS.toInt()}m acima do ponto de selamento"
+                EnvironmentalLock.NONE -> ""
+            }
+            Text(statusText, style = MaterialTheme.typography.labelSmall, color = if (conditionMet) MatrixGreen else Magenta)
+        }
+
         Spacer(Modifier.height(16.dp))
 
         Button(
-            onClick = {
-                // Nota: em produção, environmentalConditionMet deve vir de
-                // uma leitura ativa do SensorRepository comparada aos
-                // thresholds definidos em SensorRepository.Companion.
-                val conditionMet = capsule.environmentalLock == EnvironmentalLock.NONE
-                viewModel.attemptUnlock(capsule.id, conditionMet)
-            },
+            onClick = { viewModel.attemptUnlock(capsule.id, conditionMet) },
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("TENTAR DESBLOQUEAR")
@@ -65,8 +98,20 @@ fun CapsuleDetailScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
         Spacer(Modifier.height(16.dp))
 
         when (val result = unlockResult) {
-            is UnlockResult.Success -> Text("✅ DECODIFICADO:\n${result.plainText}", color = MatrixGreen)
-            UnlockResult.TooFar -> Text("📡 Fora do raio de 1.5m. Aproxime-se.", color = Magenta)
+            is UnlockResult.Success -> {
+                Text("✅ DECODIFICADO:\n${result.plainText}", color = MatrixGreen)
+                Spacer(Modifier.height(12.dp))
+                mediaBitmap?.let { bmp ->
+                    Text("Evidência multimídia anexada:", style = MaterialTheme.typography.labelSmall, color = MatrixGreen)
+                    Spacer(Modifier.height(4.dp))
+                    Image(
+                        bitmap = bmp.asImageBitmap(),
+                        contentDescription = "Mídia decifrada da cápsula",
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+            UnlockResult.TooFar -> Text("📡 Fora do raio de ${capsule.unlockRadiusMeters}m. Aproxime-se.", color = Magenta)
             UnlockResult.TooEarly -> Text("⏳ Ainda não é o momento — cápsula bloqueada no tempo.", color = Magenta)
             UnlockResult.EnvironmentalConditionNotMet -> Text("🌑 Condição ambiental não satisfeita.", color = Magenta)
             UnlockResult.DecryptionFailed -> Text("🔒 Falha na descriptografia. Local/tempo incorretos.", color = Magenta)

@@ -32,6 +32,7 @@ data class TimeCapsule(
     // Coordenadas de selamento (parte da derivação da chave)
     val sealLatitude: Double,
     val sealLongitude: Double,
+    val sealAltitudeMeters: Double? = null,
 
     // Raio de desbloqueio em metros (padrão da spec: 1.5m)
     val unlockRadiusMeters: Double = 1.5,

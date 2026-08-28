@@ -122,4 +122,33 @@ object SpaceTimeCrypto {
         }
         return null
     }
+
+    fun decryptBytes(cipherBytes: ByteArray, ivBase64: String, latitude: Double, longitude: Double, epochMillis: Long): ByteArray? {
+        return try {
+            val key = deriveKey(latitude, longitude, epochMillis)
+            val cipher = Cipher.getInstance(ALGORITHM)
+            val iv = Base64.decode(ivBase64, Base64.NO_WRAP)
+            val spec = GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv)
+            cipher.init(Cipher.DECRYPT_MODE, key, spec)
+            cipher.doFinal(cipherBytes)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun tryDecryptBytesAcrossWindow(
+        cipherBytes: ByteArray,
+        ivBase64: String,
+        latitude: Double,
+        longitude: Double,
+        fromEpochMillis: Long,
+        toEpochMillis: Long
+    ): ByteArray? {
+        var t = fromEpochMillis
+        while (t <= toEpochMillis) {
+            decryptBytes(cipherBytes, ivBase64, latitude, longitude, t)?.let { return it }
+            t += TIME_WINDOW_MILLIS
+        }
+        return null
+    }
 }

@@ -2,6 +2,10 @@
 
 package com.gigawalljfl.geolock.ui.screens
 
+import android.graphics.Bitmap
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,7 +14,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -18,6 +25,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,6 +34,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
 import com.gigawalljfl.geolock.data.db.Difficulty
 import com.gigawalljfl.geolock.data.db.EnvironmentalLock
@@ -42,6 +52,11 @@ fun SealCapsuleScreen(viewModel: GeoLockViewModel, onDone: () -> Unit) {
     var delayHours by remember { mutableStateOf("0") }
     var envLock by remember { mutableStateOf(EnvironmentalLock.NONE) }
     var difficulty by remember { mutableStateOf(Difficulty.RECRUTA) }
+    var photo by remember { mutableStateOf<Bitmap?>(null) }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicturePreview()
+    ) { bitmap -> photo = bitmap }
 
     Column(
         modifier = Modifier
@@ -95,6 +110,30 @@ fun SealCapsuleScreen(viewModel: GeoLockViewModel, onDone: () -> Unit) {
             onSelect = { difficulty = it }
         )
 
+        Spacer(Modifier.height(12.dp))
+        Text("Evidência multimídia (opcional)", style = MaterialTheme.typography.labelSmall, color = MatrixGreen)
+        Spacer(Modifier.height(4.dp))
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            OutlinedButton(onClick = { cameraLauncher.launch() }) {
+                Text(if (photo == null) "📷 CAPTURAR FOTO" else "📷 TROCAR FOTO")
+            }
+            photo?.let { bmp ->
+                Spacer(Modifier.width(12.dp))
+                Image(
+                    bitmap = bmp.asImageBitmap(),
+                    contentDescription = "Foto anexada",
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                )
+            }
+        }
+        Text(
+            "A foto é cifrada com a mesma chave espaço-temporal da mensagem — só é revelada junto com ela.",
+            style = MaterialTheme.typography.labelSmall,
+            color = NeonCyan
+        )
+
         Spacer(Modifier.height(24.dp))
         Button(
             onClick = {
@@ -107,7 +146,8 @@ fun SealCapsuleScreen(viewModel: GeoLockViewModel, onDone: () -> Unit) {
                     unlockAtEpochMillis = unlockAt,
                     unlockRadiusMeters = radius.toDoubleOrNull() ?: 1.5,
                     environmentalLock = envLock,
-                    difficulty = difficulty
+                    difficulty = difficulty,
+                    mediaBitmap = photo
                 )
                 onDone()
             },

@@ -1,5 +1,6 @@
 package com.gigawalljfl.geolock.data.repository
 
+import android.content.Context
 import com.gigawalljfl.geolock.crypto.SpaceTimeCrypto
 import com.gigawalljfl.geolock.data.db.Difficulty
 import com.gigawalljfl.geolock.data.db.EnvironmentalLock
@@ -7,6 +8,7 @@ import com.gigawalljfl.geolock.data.db.TimeCapsule
 import com.gigawalljfl.geolock.data.db.TimeCapsuleDao
 import com.gigawalljfl.geolock.location.LocationRepository
 import kotlinx.coroutines.flow.Flow
+import java.io.File
 import java.util.UUID
 
 sealed class UnlockResult {
@@ -17,7 +19,10 @@ sealed class UnlockResult {
     object DecryptionFailed : UnlockResult()
 }
 
-class CapsuleRepository(private val dao: TimeCapsuleDao) {
+class CapsuleRepository(
+    private val dao: TimeCapsuleDao,
+    private val appContext: Context
+) {
 
     fun observeAll(): Flow<List<TimeCapsule>> = dao.observeAll()
     fun observeUnlockedCount(): Flow<Int> = dao.observeUnlockedCount()
@@ -26,7 +31,9 @@ class CapsuleRepository(private val dao: TimeCapsuleDao) {
      * Sela uma nova cápsula. A chave de cifragem é derivada usando o
      * timestamp de DESBLOQUEIO (unlockAtEpochMillis), não o de criação —
      * assim a cápsula só pode ser aberta a partir do instante certo, no
-     * lugar certo.
+     * lugar certo. Se mediaBytes for fornecido (ex.: foto capturada), ele
+     * é cifrado com a MESMA chave espaço-temporal e salvo em disco; nunca
+     * fica em texto plano.
      */
     suspend fun sealCapsule(
         title: String,
@@ -34,23 +41,39 @@ class CapsuleRepository(private val dao: TimeCapsuleDao) {
         secretMessage: String,
         latitude: Double,
         longitude: Double,
+        altitudeMeters: Double?,
         unlockAtEpochMillis: Long,
         unlockRadiusMeters: Double,
         environmentalLock: EnvironmentalLock,
-        difficulty: Difficulty
+        difficulty: Difficulty,
+        mediaBytes: ByteArray? = null
     ): TimeCapsule {
+        val id = UUID.randomUUID().toString()
         val payload = SpaceTimeCrypto.encrypt(secretMessage, latitude, longitude, unlockAtEpochMillis)
 
+        var mediaPath: String? = null
+        var mediaIv: String? = null
+        if (mediaBytes != null) {
+            val (cipherBytes, iv) = SpaceTimeCrypto.encryptBytes(mediaBytes, latitude, longitude, unlockAtEpochMillis)
+            val file = File(appContext.filesDir, "capsule_$id.media.enc")
+            file.writeBytes(cipherBytes)
+            mediaPath = file.absolutePath
+            mediaIv = iv
+        }
+
         val capsule = TimeCapsule(
-            id = UUID.randomUUID().toString(),
+            id = id,
             title = title,
             hint = hint,
             sealLatitude = latitude,
             sealLongitude = longitude,
+            sealAltitudeMeters = altitudeMeters,
             unlockRadiusMeters = unlockRadiusMeters,
             unlockAtEpochMillis = unlockAtEpochMillis,
             cipherTextBase64 = payload.cipherTextBase64,
             ivBase64 = payload.ivBase64,
+            encryptedMediaPath = mediaPath,
+            mediaIvBase64 = mediaIv,
             environmentalLock = environmentalLock,
             difficulty = difficulty,
             createdAtEpochMillis = System.currentTimeMillis(),
@@ -63,11 +86,8 @@ class CapsuleRepository(private val dao: TimeCapsuleDao) {
     /**
      * Tenta abrir a cápsula com a posição atual do explorador. Valida, nesta
      * ordem: janela de tempo -> raio geodésico (Haversine) -> condição
-     * ambiental (verificada externamente pelo chamador, via SensorRepository)
-     * -> descriptografia AES-GCM.
-     *
-     * environmentalConditionMet deve ser calculado pela UI a partir das
-     * leituras de sensor atuais antes de chamar esta função.
+     * ambiental (calculada pela UI a partir de leituras de sensor ao vivo,
+     * via SensorRepository) -> descriptografia AES-GCM.
      */
     suspend fun attemptUnlock(
         capsuleId: String,
@@ -107,6 +127,36 @@ class CapsuleRepository(private val dao: TimeCapsuleDao) {
             dao.markUnlocked(capsule.id, currentEpochMillis)
         }
         return UnlockResult.Success(plainText)
+    }
+
+    /**
+     * Decifra a mídia anexada de uma cápsula já desbloqueada (ou tenta,
+     * varrendo a janela de tempo permitida). Retorna null se não houver
+     * mídia, se o arquivo não existir, ou se a decifragem falhar.
+     */
+    suspend fun decryptMediaIfAny(capsule: TimeCapsule): ByteArray? {
+        val path = capsule.encryptedMediaPath ?: return null
+        val iv = capsule.mediaIvBase64 ?: return null
+        val file = File(path)
+        if (!file.exists()) return null
+        val cipherBytes = file.readBytes()
+        return SpaceTimeCrypto.tryDecryptBytesAcrossWindow(
+            cipherBytes = cipherBytes,
+            ivBase64 = iv,
+            latitude = capsule.sealLatitude,
+            longitude = capsule.sealLongitude,
+            fromEpochMillis = capsule.unlockAtEpochMillis,
+            toEpochMillis = System.currentTimeMillis()
+        )
+    }
+
+    /**
+     * Importa uma cápsula recebida via QR Code (ver CapsuleQrCodec). O
+     * conteúdo já vem cifrado — importar não expõe o segredo, só passa a
+     * monitorar a cápsula localmente para tentativas futuras de abertura.
+     */
+    suspend fun importCapsule(capsule: TimeCapsule) {
+        dao.insert(capsule.copy(isOwnedByCreator = false, isUnlocked = false, unlockedAtEpochMillis = null))
     }
 
     suspend fun delete(capsule: TimeCapsule) = dao.delete(capsule)
