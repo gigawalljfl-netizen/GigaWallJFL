@@ -46,7 +46,14 @@ class MainActivity : ComponentActivity() {
         val permissionLauncher = registerForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions()
         ) { result ->
-            if (result.values.all { it }) {
+            // O rastreamento de localização começa assim que QUALQUER permissão
+            // de localização for concedida — não depende de câmara/armazenamento
+            // também estarem concedidas. Selar/desbloquear cápsulas só precisa
+            // do GPS; exigir tudo junto deixava o app "morto" se a câmara fosse negada.
+            val locationGranted =
+                result[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                    result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+            if (locationGranted) {
                 viewModel.startTrackingLocation()
             }
         }

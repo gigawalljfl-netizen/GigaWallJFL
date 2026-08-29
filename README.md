@@ -53,3 +53,16 @@ git push -u origin main
 ```
 
 O workflow dispara automaticamente no push para `main` e publica o APK debug em Releases, tag `build-<numero_do_run>`.
+
+## Correções críticas (v1.3.0)
+- 🐛 **Bug raiz encontrado e corrigido**: o app só começava a rastrear o GPS depois que TODAS as permissões (localização + câmara + armazenamento) fossem concedidas juntas. Se qualquer uma fosse negada, o rastreamento nunca começava — e como selar/desbloquear cápsulas depende do GPS, essas ações falhavam em silêncio, sem nenhum aviso. Agora o rastreamento começa assim que a localização é concedida, independente das demais.
+- Adicionado indicador visível de status de GPS ("🛰️ GPS ativo" / "🛰️ Aguardando sinal") no Radar, Selamento, Detalhe e Mapa.
+- Selar cápsula e desbloquear agora mostram feedback explícito de sucesso/falha.
+- Mapa: corrigido zoom inicial que deixava a tela parecendo vazia antes do primeiro fix de GPS.
+
+## Radar de deteção por câmera (novo, v1.3.0)
+No HUD de AR, além do feixe que aponta pro alvo real (a cápsula), a câmera escaneia a cena ao vivo via ML Kit (100% on-device, nunca envia imagem pra rede):
+- Rostos detectados → rotulados PESSOA (magenta)
+- Outros objetos salientes → rotulados OBJETO genérico (ciano)
+
+Limitação honesta: o ML Kit não vem com classificador embutido que diferencie carro de animal — só "rosto" e "objeto saliente" sem espécie. Rotular CARRO/ANIMAL de verdade exigiria um modelo TensorFlow Lite customizado (ex. SSD MobileNet/COCO), que não deu pra baixar neste ambiente sem acesso à rede. O código já está pronto pra essa extensão futura.

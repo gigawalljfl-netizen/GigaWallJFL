@@ -2,6 +2,7 @@ package com.gigawalljfl.geolock.ui.screens
 
 import android.location.Location
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -18,20 +19,27 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.gigawalljfl.geolock.haptics.ProximityFeedbackEngine
+import com.gigawalljfl.geolock.radar.DetectedTarget
+import com.gigawalljfl.geolock.radar.ObjectRadarAnalyzer
+import com.gigawalljfl.geolock.radar.RadarCategory
 import com.gigawalljfl.geolock.sensors.SensorRepository
 import com.gigawalljfl.geolock.ui.GeoLockViewModel
 import com.gigawalljfl.geolock.ui.theme.MatrixGreen
+import com.gigawalljfl.geolock.ui.theme.Magenta
 import com.gigawalljfl.geolock.ui.theme.NeonCyan
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -52,6 +60,14 @@ fun ArHudScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
     var azimuth by remember { mutableFloatStateOf(0f) }
     var bearingToTarget by remember { mutableFloatStateOf(0f) }
     var distanceMeters by remember { mutableFloatStateOf(9999f) }
+    var detectedTargets by remember { mutableStateOf<List<DetectedTarget>>(emptyList()) }
+
+    val radarAnalyzer = remember {
+        ObjectRadarAnalyzer { targets -> detectedTargets = targets }
+    }
+    DisposableEffect(Unit) {
+        onDispose { radarAnalyzer.release() }
+    }
 
     // Bússola em tempo real
     LaunchedEffect(Unit) {
@@ -88,12 +104,17 @@ fun ArHudScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
                     val preview = Preview.Builder().build().also {
                         it.setSurfaceProvider(previewView.surfaceProvider)
                     }
+                    val analysis = ImageAnalysis.Builder()
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .build()
+                        .also { it.setAnalyzer(androidx.core.content.ContextCompat.getMainExecutor(ctx), radarAnalyzer) }
                     try {
                         cameraProvider.unbindAll()
                         cameraProvider.bindToLifecycle(
                             lifecycleOwner,
                             CameraSelector.DEFAULT_BACK_CAMERA,
-                            preview
+                            preview,
+                            analysis
                         )
                     } catch (_: Exception) {
                         // Câmera indisponível — HUD continua funcional sem o feed de vídeo
@@ -113,6 +134,38 @@ fun ArHudScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
         }
 
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val canvasWidth = constraints.maxWidth.toFloat()
+            val canvasHeight = constraints.maxHeight.toFloat()
+
+            // Caixas do radar de deteção — objetos/pessoas reais captados
+            // pela câmera enquanto se busca o alvo real (a cápsula).
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                detectedTargets.forEach { target ->
+                    val boxColor = if (target.category == RadarCategory.PESSOA) Magenta else NeonCyan
+                    val left = target.boxFraction.left * canvasWidth
+                    val top = target.boxFraction.top * canvasHeight
+                    val right = target.boxFraction.right * canvasWidth
+                    val bottom = target.boxFraction.bottom * canvasHeight
+
+                    drawRect(
+                        color = boxColor,
+                        topLeft = Offset(left, top),
+                        size = androidx.compose.ui.geometry.Size(right - left, bottom - top),
+                        style = Stroke(width = 3f)
+                    )
+                    drawContext.canvas.nativeCanvas.drawText(
+                        target.label,
+                        left,
+                        (top - 8f).coerceAtLeast(20f),
+                        android.graphics.Paint().apply {
+                            color = boxColor.toArgb()
+                            textSize = 28f
+                            isFakeBoldText = true
+                        }
+                    )
+                }
+            }
+
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val centerX = size.width / 2f
                 val centerY = size.height / 2f
@@ -128,6 +181,12 @@ fun ArHudScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
                 drawLine(color = ringColor.copy(alpha = 0.5f), start = Offset(centerX, centerY), end = Offset(targetX, targetY), strokeWidth = 2f)
             }
         }
+
+        Text(
+            "🔎 RADAR: ${detectedTargets.size} objeto(s) em cena",
+            color = NeonCyan,
+            modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)
+        )
 
         TextButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(12.dp)) {
             Text("← SAIR DO AR", color = NeonCyan)

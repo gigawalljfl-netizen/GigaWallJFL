@@ -40,6 +40,13 @@ data class PendingAttachment(
     val mimeType: String
 )
 
+sealed class SealState {
+    object Idle : SealState()
+    object Saving : SealState()
+    object Success : SealState()
+    object NoGpsFix : SealState()
+}
+
 class GeoLockViewModel(application: Application) : AndroidViewModel(application) {
 
     private val app = application as GeoLockApp
@@ -64,6 +71,9 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
 
     private val _decryptedAttachmentBytes = MutableStateFlow<ByteArray?>(null)
     val decryptedAttachmentBytes: StateFlow<ByteArray?> = _decryptedAttachmentBytes.asStateFlow()
+
+    private val _sealState = MutableStateFlow<SealState>(SealState.Idle)
+    val sealState: StateFlow<SealState> = _sealState.asStateFlow()
 
     private val _saveFeedback = MutableStateFlow<String?>(null)
     val saveFeedback: StateFlow<String?> = _saveFeedback.asStateFlow()
@@ -137,7 +147,12 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
         difficulty: Difficulty,
         attachment: PendingAttachment? = null
     ) {
-        val fix = _currentFix.value ?: return
+        val fix = _currentFix.value
+        if (fix == null) {
+            _sealState.value = SealState.NoGpsFix
+            return
+        }
+        _sealState.value = SealState.Saving
         viewModelScope.launch {
             capsuleRepository.sealCapsule(
                 title = title,
@@ -154,7 +169,12 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
                 attachmentFileName = attachment?.fileName,
                 attachmentMimeType = attachment?.mimeType
             )
+            _sealState.value = SealState.Success
         }
+    }
+
+    fun resetSealState() {
+        _sealState.value = SealState.Idle
     }
 
     /**
@@ -181,7 +201,11 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
     fun observeLiveLux() = sensorRepository.observeLight()
 
     fun attemptUnlock(capsuleId: String, environmentalConditionMet: Boolean) {
-        val fix = _currentFix.value ?: return
+        val fix = _currentFix.value
+        if (fix == null) {
+            _unlockResult.value = UnlockResult.NoGpsFix
+            return
+        }
         viewModelScope.launch {
             val result = capsuleRepository.attemptUnlock(
                 capsuleId = capsuleId,

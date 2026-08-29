@@ -30,6 +30,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,14 +45,19 @@ import com.gigawalljfl.geolock.data.db.Difficulty
 import com.gigawalljfl.geolock.data.db.EnvironmentalLock
 import com.gigawalljfl.geolock.ui.GeoLockViewModel
 import com.gigawalljfl.geolock.ui.PendingAttachment
+import com.gigawalljfl.geolock.ui.SealState
 import com.gigawalljfl.geolock.ui.theme.MatrixGreen
+import com.gigawalljfl.geolock.ui.theme.Magenta
 import com.gigawalljfl.geolock.ui.theme.NeonCyan
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 
 @Composable
 fun SealCapsuleScreen(viewModel: GeoLockViewModel, onDone: () -> Unit) {
     val coroutineScope = rememberCoroutineScope()
+    val sealState by viewModel.sealState.collectAsState()
+    val fix by viewModel.currentFix.collectAsState()
 
     var title by remember { mutableStateOf("") }
     var hint by remember { mutableStateOf("") }
@@ -81,6 +88,17 @@ fun SealCapsuleScreen(viewModel: GeoLockViewModel, onDone: () -> Unit) {
         }
     }
 
+    // Só volta pra tela anterior DEPOIS de confirmar que a cápsula foi
+    // realmente gravada — evita a sensação de "não guardou nada" de
+    // sair da tela sem saber se o selamento funcionou.
+    LaunchedEffect(sealState) {
+        if (sealState is SealState.Success) {
+            delay(700)
+            viewModel.resetSealState()
+            onDone()
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -88,6 +106,12 @@ fun SealCapsuleScreen(viewModel: GeoLockViewModel, onDone: () -> Unit) {
             .padding(16.dp)
     ) {
         Text("SELAR NOVA CÁPSULA", style = MaterialTheme.typography.titleLarge, color = NeonCyan)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            if (fix != null) "🛰️ GPS ativo — precisão ±${fix!!.accuracyMeters.toInt()}m" else "🛰️ Aguardando sinal de GPS…",
+            style = MaterialTheme.typography.labelSmall,
+            color = if (fix != null) MatrixGreen else Magenta
+        )
         Spacer(Modifier.height(16.dp))
 
         OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Título") }, modifier = Modifier.fillMaxWidth())
@@ -191,11 +215,26 @@ fun SealCapsuleScreen(viewModel: GeoLockViewModel, onDone: () -> Unit) {
                     difficulty = difficulty,
                     attachment = attachment
                 )
-                onDone()
             },
+            enabled = sealState !is SealState.Saving,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("SELAR NO ESPAÇO-TEMPO")
+            Text(
+                when (sealState) {
+                    is SealState.Saving -> "SELANDO…"
+                    is SealState.Success -> "✅ SELADA!"
+                    else -> "SELAR NO ESPAÇO-TEMPO"
+                }
+            )
+        }
+
+        if (sealState is SealState.NoGpsFix) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "⚠️ Ainda não há sinal de GPS suficiente. Sai a céu aberto e espera alguns segundos antes de tentar de novo.",
+                style = MaterialTheme.typography.labelSmall,
+                color = Magenta
+            )
         }
     }
 }

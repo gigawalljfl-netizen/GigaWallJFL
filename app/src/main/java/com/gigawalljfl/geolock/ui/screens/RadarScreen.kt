@@ -86,6 +86,13 @@ fun RadarScreen(
 
         Spacer(Modifier.height(12.dp))
 
+        Text(
+            if (fix != null) "🛰️ GPS ativo — precisão ±${fix!!.accuracyMeters.toInt()}m" else "🛰️ Aguardando sinal de GPS — verifica se a localização foi autorizada",
+            style = MaterialTheme.typography.labelSmall,
+            color = if (fix != null) MatrixGreen else Magenta
+        )
+        Spacer(Modifier.height(4.dp))
+
         TelemetryPanel(
             latitude = fix?.latitude,
             longitude = fix?.longitude,

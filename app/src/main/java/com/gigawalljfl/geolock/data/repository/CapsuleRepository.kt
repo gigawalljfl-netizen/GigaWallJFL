@@ -17,6 +17,7 @@ sealed class UnlockResult {
     object TooEarly : UnlockResult()
     object EnvironmentalConditionNotMet : UnlockResult()
     object DecryptionFailed : UnlockResult()
+    object NoGpsFix : UnlockResult()
 }
 
 class CapsuleRepository(

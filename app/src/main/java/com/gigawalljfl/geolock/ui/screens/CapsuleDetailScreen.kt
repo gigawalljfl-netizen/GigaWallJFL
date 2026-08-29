@@ -38,6 +38,7 @@ fun CapsuleDetailScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
     val mediaBitmap by viewModel.decryptedMediaBitmap.collectAsState()
     val attachmentBytes by viewModel.decryptedAttachmentBytes.collectAsState()
     val saveFeedback by viewModel.saveFeedback.collectAsState()
+    val fix by viewModel.currentFix.collectAsState()
     val capsule = capsules.firstOrNull { it.id == selectedId }
 
     var liveLux by remember { mutableStateOf<Float?>(null) }
@@ -74,6 +75,11 @@ fun CapsuleDetailScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
             "Bloqueio ambiental: ${capsule.environmentalLock} · Dificuldade: ${capsule.difficulty}",
             style = MaterialTheme.typography.bodyMedium,
             color = NeonCyan
+        )
+        Text(
+            if (fix != null) "🛰️ GPS ativo — precisão ±${fix!!.accuracyMeters.toInt()}m" else "🛰️ Aguardando sinal de GPS…",
+            style = MaterialTheme.typography.labelSmall,
+            color = if (fix != null) MatrixGreen else Magenta
         )
 
         val conditionMet = viewModel.isEnvironmentalConditionMet(capsule, liveLux)
@@ -137,6 +143,7 @@ fun CapsuleDetailScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
             UnlockResult.TooEarly -> Text("⏳ Ainda não é o momento — cápsula bloqueada no tempo.", color = Magenta)
             UnlockResult.EnvironmentalConditionNotMet -> Text("🌑 Condição ambiental não satisfeita.", color = Magenta)
             UnlockResult.DecryptionFailed -> Text("🔒 Falha na descriptografia. Local/tempo incorretos.", color = Magenta)
+            UnlockResult.NoGpsFix -> Text("🛰️ Ainda sem sinal de GPS — sai a céu aberto e espera o sinal estabilizar.", color = Magenta)
             null -> {}
         }
     }

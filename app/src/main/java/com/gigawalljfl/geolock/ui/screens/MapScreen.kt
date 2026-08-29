@@ -10,7 +10,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -19,6 +21,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.gigawalljfl.geolock.data.db.TimeCapsule
 import com.gigawalljfl.geolock.ui.GeoLockViewModel
 import com.gigawalljfl.geolock.ui.theme.MatrixGreen
+import com.gigawalljfl.geolock.ui.theme.Magenta
 import com.gigawalljfl.geolock.ui.theme.NeonCyan
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
@@ -41,19 +44,28 @@ fun MapScreen(
         MapView(context).apply {
             setTileSource(TileSourceFactory.MAPNIK)
             setMultiTouchControls(true)
-            controller.setZoom(17.0)
+            // Começa com visão ampla (mundo) — sem isso, sem GPS ainda, o
+            // mapa ficava centrado no meio do oceano em zoom máximo,
+            // parecendo uma tela cinza vazia e "quebrada".
+            controller.setZoom(3.0)
         }
     }
+    var hasCenteredOnFix by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         mapView.onResume()
         onDispose { mapView.onPause() }
     }
 
-    // Centraliza no explorador na primeira leitura de GPS
+    // Centraliza no explorador assim que a PRIMEIRA leitura de GPS chegar,
+    // e só então aproxima o zoom tático.
     LaunchedEffect(fix) {
         fix?.let {
             mapView.controller.setCenter(GeoPoint(it.latitude, it.longitude))
+            if (!hasCenteredOnFix) {
+                mapView.controller.setZoom(17.0)
+                hasCenteredOnFix = true
+            }
         }
     }
 
@@ -93,8 +105,9 @@ fun MapScreen(
         }
 
         Text(
-            "${capsules.size} cápsula(s) no mapa",
-            color = MatrixGreen,
+            if (fix != null) "${capsules.size} cápsula(s) no mapa · 🛰️ GPS ativo"
+            else "${capsules.size} cápsula(s) no mapa · 🛰️ aguardando GPS…",
+            color = if (fix != null) MatrixGreen else Magenta,
             modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp)
         )
     }
