@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
 import com.gigawalljfl.geolock.data.db.EnvironmentalLock
 import com.gigawalljfl.geolock.data.repository.UnlockResult
+import com.gigawalljfl.geolock.location.GpsQuality
 import com.gigawalljfl.geolock.sensors.SensorRepository
 import com.gigawalljfl.geolock.ui.GeoLockViewModel
 import com.gigawalljfl.geolock.ui.theme.MatrixGreen
@@ -39,6 +40,7 @@ fun CapsuleDetailScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
     val attachmentBytes by viewModel.decryptedAttachmentBytes.collectAsState()
     val saveFeedback by viewModel.saveFeedback.collectAsState()
     val fix by viewModel.currentFix.collectAsState()
+    val isCalibrating by viewModel.isCalibratingUnlock.collectAsState()
     val capsule = capsules.firstOrNull { it.id == selectedId }
 
     var liveLux by remember { mutableStateOf<Float?>(null) }
@@ -77,9 +79,9 @@ fun CapsuleDetailScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
             color = NeonCyan
         )
         Text(
-            if (fix != null) "🛰️ GPS ativo — precisão ±${fix!!.accuracyMeters.toInt()}m" else "🛰️ Aguardando sinal de GPS…",
+            if (fix != null) GpsQuality.label(fix!!.accuracyMeters) else "🛰️ Aguardando sinal de GPS…",
             style = MaterialTheme.typography.labelSmall,
-            color = if (fix != null) MatrixGreen else Magenta
+            color = if (fix != null) GpsQuality.color(fix!!.accuracyMeters) else Magenta
         )
 
         val conditionMet = viewModel.isEnvironmentalConditionMet(capsule, liveLux)
@@ -99,9 +101,10 @@ fun CapsuleDetailScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
 
         Button(
             onClick = { viewModel.attemptUnlock(capsule.id, conditionMet) },
+            enabled = !isCalibrating,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("TENTAR DESBLOQUEAR")
+            Text(if (isCalibrating) "🎯 CALIBRANDO GPS…" else "TENTAR DESBLOQUEAR")
         }
 
         Spacer(Modifier.height(16.dp))

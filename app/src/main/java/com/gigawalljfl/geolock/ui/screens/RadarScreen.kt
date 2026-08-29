@@ -27,11 +27,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gigawalljfl.geolock.data.db.TimeCapsule
+import com.gigawalljfl.geolock.location.GpsQuality
+import com.gigawalljfl.geolock.location.LocationRepository
 import com.gigawalljfl.geolock.ui.GeoLockViewModel
 import com.gigawalljfl.geolock.ui.theme.MatrixGreen
 import com.gigawalljfl.geolock.ui.theme.Magenta
@@ -87,9 +90,9 @@ fun RadarScreen(
         Spacer(Modifier.height(12.dp))
 
         Text(
-            if (fix != null) "🛰️ GPS ativo — precisão ±${fix!!.accuracyMeters.toInt()}m" else "🛰️ Aguardando sinal de GPS — verifica se a localização foi autorizada",
+            if (fix != null) GpsQuality.label(fix!!.accuracyMeters) else "🛰️ Aguardando sinal de GPS — verifica se a localização foi autorizada",
             style = MaterialTheme.typography.labelSmall,
-            color = if (fix != null) MatrixGreen else Magenta
+            color = if (fix != null) GpsQuality.color(fix!!.accuracyMeters) else Magenta
         )
         Spacer(Modifier.height(4.dp))
 
@@ -110,11 +113,22 @@ fun RadarScreen(
         )
         Spacer(Modifier.height(8.dp))
 
+        // Ordena pela distância real até o explorador — um radar de
+        // verdade mostra o mais próximo primeiro, não o mais recente.
+        val sortedCapsules = remember(capsules, fix) {
+            val f = fix
+            if (f != null) {
+                capsules.sortedBy { c ->
+                    LocationRepository.haversineMeters(c.sealLatitude, c.sealLongitude, f.latitude, f.longitude)
+                }
+            } else capsules
+        }
+
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(capsules, key = { it.id }) { capsule ->
+            items(sortedCapsules, key = { it.id }) { capsule ->
                 CapsuleCard(
                     capsule = capsule,
-                    distanceMeters = viewModel.distanceToCapsule(capsule),
+                    distanceMeters = fix?.let { LocationRepository.haversineMeters(capsule.sealLatitude, capsule.sealLongitude, it.latitude, it.longitude) },
                     onOpen = { onOpenCapsule(capsule.id) },
                     onAr = { onOpenAr(capsule.id) },
                     onExport = { onExportQr(capsule.id) }

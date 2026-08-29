@@ -66,3 +66,10 @@ No HUD de AR, além do feixe que aponta pro alvo real (a cápsula), a câmera es
 - Outros objetos salientes → rotulados OBJETO genérico (ciano)
 
 Limitação honesta: o ML Kit não vem com classificador embutido que diferencie carro de animal — só "rosto" e "objeto saliente" sem espécie. Rotular CARRO/ANIMAL de verdade exigiria um modelo TensorFlow Lite customizado (ex. SSD MobileNet/COCO), que não deu pra baixar neste ambiente sem acesso à rede. O código já está pronto pra essa extensão futura.
+
+## Precisão (v1.4.0)
+- **GPS**: selar e desbloquear agora colhem 5 leituras de GPS em sequência e combinam por média ponderada pela variância inversa (leituras mais precisas pesam mais) — muito mais estável que confiar numa única leitura isolada. Aparece como "🎯 Calibrando GPS…" por alguns segundos antes de gravar/validar.
+- **Faixas de qualidade de sinal** (Excelente/Boa/Fraca) exibidas de forma consistente no Radar, Selamento, Detalhe e Mapa.
+- **Radar tático**: lista agora ordenada pela distância real até o explorador (mais perto primeiro), não pela data de criação.
+- **Mapa**: círculo de precisão translúcido ao redor da tua posição, e círculo do raio de desbloqueio ao redor de cada cápsula (verde = desbloqueada, magenta = travada) — dá pra visualizar exatamente o quão perto é preciso chegar.
+- **Radar de câmera**: rastreamento por ID entre quadros com suavização (interpolação) da posição das caixas — reduz o "tremido"/salto que aparecia a cada novo ciclo de deteção do ML Kit.

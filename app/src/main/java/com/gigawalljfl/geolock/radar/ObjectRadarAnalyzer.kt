@@ -31,7 +31,8 @@ enum class RadarCategory { PESSOA, OBJETO }
 data class DetectedTarget(
     val label: String,
     val category: RadarCategory,
-    val boxFraction: RectF
+    val boxFraction: RectF,
+    val trackingId: Int? = null
 )
 
 /**
@@ -55,10 +56,12 @@ class ObjectRadarAnalyzer(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val isBusy = AtomicBoolean(false)
+    private val smoothedBoxes = mutableMapOf<Int, RectF>()
 
     private val faceDetector = FaceDetection.getClient(
         FaceDetectorOptions.Builder()
             .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+            .enableTracking()
             .build()
     )
 
@@ -87,24 +90,32 @@ class ObjectRadarAnalyzer(
             try {
                 val faces = faceDetector.process(input).await()
                 faces.forEach { face ->
+                    val rawBox = rotatedNormalizedBox(face.boundingBox, rawWidth, rawHeight, rotation)
                     targets += DetectedTarget(
                         label = "PESSOA",
                         category = RadarCategory.PESSOA,
-                        boxFraction = rotatedNormalizedBox(face.boundingBox, rawWidth, rawHeight, rotation)
+                        boxFraction = smooth(face.trackingId, rawBox),
+                        trackingId = face.trackingId
                     )
                 }
 
                 val objects = objectDetector.process(input).await()
                 objects.forEach { obj ->
-                    val box = rotatedNormalizedBox(obj.boundingBox, rawWidth, rawHeight, rotation)
+                    val rawBox = rotatedNormalizedBox(obj.boundingBox, rawWidth, rawHeight, rotation)
+                    val box = smooth(obj.trackingId, rawBox)
                     // Evita desenhar uma caixa "OBJETO" duplicada em cima de um rosto já detectado
                     val coveredByFace = targets.any {
                         it.category == RadarCategory.PESSOA && RectF.intersects(it.boxFraction, box)
                     }
                     if (!coveredByFace) {
-                        targets += DetectedTarget("OBJETO", RadarCategory.OBJETO, box)
+                        targets += DetectedTarget("OBJETO", RadarCategory.OBJETO, box, obj.trackingId)
                     }
                 }
+
+                // Descarta suavização de alvos que saíram de cena, senão o
+                // mapa cresce pra sempre e IDs antigos nunca se limpam
+                val seenIds = targets.mapNotNull { it.trackingId }.toSet()
+                smoothedBoxes.keys.retainAll(seenIds)
             } catch (_: Exception) {
                 // Frame perdido — o próximo frame tenta de novo, sem travar o radar
             } finally {
@@ -114,6 +125,31 @@ class ObjectRadarAnalyzer(
             }
         }
     }
+
+    /**
+     * Suaviza a posição de uma caixa entre quadros por interpolação linear
+     * com a última posição conhecida do mesmo trackingId — reduz o efeito
+     * de "tremida"/salto que aparece quando cada ciclo de inferência do
+     * ML Kit chega com uma leitura ligeiramente diferente da anterior.
+     */
+    private fun smooth(trackingId: Int?, newBox: RectF): RectF {
+        if (trackingId == null) return newBox
+        val previous = smoothedBoxes[trackingId]
+        val result = if (previous == null) {
+            newBox
+        } else {
+            RectF(
+                lerp(previous.left, newBox.left),
+                lerp(previous.top, newBox.top),
+                lerp(previous.right, newBox.right),
+                lerp(previous.bottom, newBox.bottom)
+            )
+        }
+        smoothedBoxes[trackingId] = result
+        return result
+    }
+
+    private fun lerp(a: Float, b: Float, factor: Float = 0.55f) = a + (b - a) * factor
 
     /**
      * Converte uma caixa delimitadora do espaço bruto do sensor (que o

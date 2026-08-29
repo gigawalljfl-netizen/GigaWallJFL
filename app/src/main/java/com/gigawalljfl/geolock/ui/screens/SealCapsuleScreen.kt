@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
 import com.gigawalljfl.geolock.data.db.Difficulty
 import com.gigawalljfl.geolock.data.db.EnvironmentalLock
+import com.gigawalljfl.geolock.location.GpsQuality
 import com.gigawalljfl.geolock.ui.GeoLockViewModel
 import com.gigawalljfl.geolock.ui.PendingAttachment
 import com.gigawalljfl.geolock.ui.SealState
@@ -108,9 +109,9 @@ fun SealCapsuleScreen(viewModel: GeoLockViewModel, onDone: () -> Unit) {
         Text("SELAR NOVA CÁPSULA", style = MaterialTheme.typography.titleLarge, color = NeonCyan)
         Spacer(Modifier.height(4.dp))
         Text(
-            if (fix != null) "🛰️ GPS ativo — precisão ±${fix!!.accuracyMeters.toInt()}m" else "🛰️ Aguardando sinal de GPS…",
+            if (fix != null) GpsQuality.label(fix!!.accuracyMeters) else "🛰️ Aguardando sinal de GPS…",
             style = MaterialTheme.typography.labelSmall,
-            color = if (fix != null) MatrixGreen else Magenta
+            color = if (fix != null) GpsQuality.color(fix!!.accuracyMeters) else Magenta
         )
         Spacer(Modifier.height(16.dp))
 
@@ -216,15 +217,25 @@ fun SealCapsuleScreen(viewModel: GeoLockViewModel, onDone: () -> Unit) {
                     attachment = attachment
                 )
             },
-            enabled = sealState !is SealState.Saving,
+            enabled = sealState !is SealState.Saving && sealState !is SealState.Calibrating,
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
                 when (sealState) {
+                    is SealState.Calibrating -> "🎯 CALIBRANDO GPS…"
                     is SealState.Saving -> "SELANDO…"
                     is SealState.Success -> "✅ SELADA!"
                     else -> "SELAR NO ESPAÇO-TEMPO"
                 }
+            )
+        }
+
+        if (sealState is SealState.Calibrating) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Colhendo várias leituras de GPS pra fixar a posição com mais precisão — leva só alguns segundos.",
+                style = MaterialTheme.typography.labelSmall,
+                color = NeonCyan
             )
         }
 

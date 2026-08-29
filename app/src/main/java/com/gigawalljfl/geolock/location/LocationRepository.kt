@@ -12,6 +12,9 @@ import com.google.android.gms.location.Priority
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
@@ -56,6 +59,40 @@ class LocationRepository(context: Context) {
 
         fusedClient.requestLocationUpdates(request, callback, null)
         awaitClose { fusedClient.removeLocationUpdates(callback) }
+    }
+
+    /**
+     * Colhe várias leituras de GPS em sequência rápida e combina numa
+     * única posição por MÉDIA PONDERADA PELA VARIÂNCIA INVERSA (padrão
+     * em fusão de sensores: leituras com melhor precisão pesam mais).
+     * Usado no momento de SELAR uma cápsula e no momento de TENTAR
+     * DESBLOQUEAR — uma única leitura isolada pode estar ruidosa o
+     * bastante pra colocar o ponto alguns metros fora do lugar, o que
+     * importa muito quando o raio de desbloqueio pode ser de só 1.5m.
+     */
+    @SuppressLint("MissingPermission")
+    suspend fun getAveragedFix(sampleCount: Int = 5, maxWaitMillis: Long = 6000L): GeoFix? {
+        val samples = withTimeoutOrNull(maxWaitMillis) {
+            observeHighPrecisionFixes(intervalMillis = 400L).take(sampleCount).toList()
+        }
+        if (samples.isNullOrEmpty()) return null
+        if (samples.size == 1) return samples.first()
+
+        val weights = samples.map { 1.0 / (it.accuracyMeters.toDouble().coerceAtLeast(1.0).let { a -> a * a }) }
+        val totalWeight = weights.sum()
+        val lat = samples.indices.sumOf { i -> samples[i].latitude * weights[i] } / totalWeight
+        val lon = samples.indices.sumOf { i -> samples[i].longitude * weights[i] } / totalWeight
+        val alt = samples.indices.sumOf { i -> samples[i].altitudeMeters * weights[i] } / totalWeight
+        val combinedAccuracy = sqrt(1.0 / totalWeight).toFloat()
+
+        return GeoFix(
+            latitude = lat,
+            longitude = lon,
+            altitudeMeters = alt,
+            accuracyMeters = combinedAccuracy,
+            speedMps = samples.last().speedMps,
+            timestampEpochMillis = System.currentTimeMillis()
+        )
     }
 
     companion object {

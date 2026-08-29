@@ -42,6 +42,7 @@ data class PendingAttachment(
 
 sealed class SealState {
     object Idle : SealState()
+    object Calibrating : SealState()
     object Saving : SealState()
     object Success : SealState()
     object NoGpsFix : SealState()
@@ -74,6 +75,9 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
 
     private val _sealState = MutableStateFlow<SealState>(SealState.Idle)
     val sealState: StateFlow<SealState> = _sealState.asStateFlow()
+
+    private val _isCalibratingUnlock = MutableStateFlow(false)
+    val isCalibratingUnlock: StateFlow<Boolean> = _isCalibratingUnlock.asStateFlow()
 
     private val _saveFeedback = MutableStateFlow<String?>(null)
     val saveFeedback: StateFlow<String?> = _saveFeedback.asStateFlow()
@@ -147,20 +151,25 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
         difficulty: Difficulty,
         attachment: PendingAttachment? = null
     ) {
-        val fix = _currentFix.value
-        if (fix == null) {
+        if (_currentFix.value == null) {
             _sealState.value = SealState.NoGpsFix
             return
         }
-        _sealState.value = SealState.Saving
+        _sealState.value = SealState.Calibrating
         viewModelScope.launch {
+            val averagedFix = locationRepository.getAveragedFix()
+            if (averagedFix == null) {
+                _sealState.value = SealState.NoGpsFix
+                return@launch
+            }
+            _sealState.value = SealState.Saving
             capsuleRepository.sealCapsule(
                 title = title,
                 hint = hint,
                 secretMessage = secretMessage,
-                latitude = fix.latitude,
-                longitude = fix.longitude,
-                altitudeMeters = fix.altitudeMeters,
+                latitude = averagedFix.latitude,
+                longitude = averagedFix.longitude,
+                altitudeMeters = averagedFix.altitudeMeters,
                 unlockAtEpochMillis = unlockAtEpochMillis,
                 unlockRadiusMeters = unlockRadiusMeters,
                 environmentalLock = environmentalLock,
@@ -201,12 +210,18 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
     fun observeLiveLux() = sensorRepository.observeLight()
 
     fun attemptUnlock(capsuleId: String, environmentalConditionMet: Boolean) {
-        val fix = _currentFix.value
-        if (fix == null) {
+        if (_currentFix.value == null) {
             _unlockResult.value = UnlockResult.NoGpsFix
             return
         }
+        _isCalibratingUnlock.value = true
         viewModelScope.launch {
+            val fix = locationRepository.getAveragedFix()
+            _isCalibratingUnlock.value = false
+            if (fix == null) {
+                _unlockResult.value = UnlockResult.NoGpsFix
+                return@launch
+            }
             val result = capsuleRepository.attemptUnlock(
                 capsuleId = capsuleId,
                 currentLatitude = fix.latitude,
