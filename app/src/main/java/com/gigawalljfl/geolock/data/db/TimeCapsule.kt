@@ -33,6 +33,11 @@ data class TimeCapsule(
     val sealLatitude: Double,
     val sealLongitude: Double,
     val sealAltitudeMeters: Double? = null,
+    // Pressão atmosférica (hPa) no momento do selamento — usada, junto com
+    // a altitude do GPS, pra checar o bloqueio ALTITUDE de forma mais
+    // precisa via barômetro (quando o aparelho tem um). Null se o
+    // dispositivo não tinha barômetro no momento de selar.
+    val sealPressureHpa: Float? = null,
 
     // Raio de desbloqueio em metros (padrão da spec: 1.5m)
     val unlockRadiusMeters: Double = 1.5,

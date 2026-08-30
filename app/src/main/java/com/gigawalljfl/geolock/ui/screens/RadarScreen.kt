@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -69,7 +70,7 @@ fun RadarScreen(
             Column {
                 Text("GEOLOCK // RADAR TÁTICO", style = MaterialTheme.typography.titleLarge, color = NeonCyan)
                 Text(
-                    "${gamification.rank.emoji} ${gamification.rank.displayName}  ·  XP ${gamification.xp}",
+                    "${gamification.rank.emoji} ${gamification.rank.displayName}  ·  XP ${gamification.xp}  ·  🎖️ ${gamification.unlockedMedals.size}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MatrixGreen
                 )
@@ -188,7 +189,15 @@ private fun CapsuleCard(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
-            Text(capsule.title, style = MaterialTheme.typography.bodyLarge, color = NeonCyan, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(capsule.title, style = MaterialTheme.typography.bodyLarge, color = NeonCyan, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    if (capsule.isOwnedByCreator) "🛡️ SUA" else "📥 IMPORTADA",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (capsule.isOwnedByCreator) NeonCyan else MatrixGreen
+                )
+            }
             Text(
                 if (capsule.isUnlocked) "DESBLOQUEADA" else "DIST: ${distanceMeters?.roundToInt() ?: "--"}m",
                 style = MaterialTheme.typography.labelSmall,

@@ -73,3 +73,9 @@ Limitação honesta: o ML Kit não vem com classificador embutido que diferencie
 - **Radar tático**: lista agora ordenada pela distância real até o explorador (mais perto primeiro), não pela data de criação.
 - **Mapa**: círculo de precisão translúcido ao redor da tua posição, e círculo do raio de desbloqueio ao redor de cada cápsula (verde = desbloqueada, magenta = travada) — dá pra visualizar exatamente o quão perto é preciso chegar.
 - **Radar de câmera**: rastreamento por ID entre quadros com suavização (interpolação) da posição das caixas — reduz o "tremido"/salto que aparecia a cada novo ciclo de deteção do ML Kit.
+
+## Pendências da spec resolvidas (v1.5.0)
+- **Ícone final do app**: substituído o placeholder por um logo próprio — hexágono de geofence (ciano) com um cadeado (magenta/verde) dentro, adaptativo (Android 8+).
+- **Persistência de medalhas**: medalhas agora são gravadas com data de conquista numa tabela própria (`earned_medals`). Antes eram recalculadas a partir das cápsulas atuais — se apagasses uma cápsula, a medalha que ela rendeu sumia. Agora, uma vez ganha, fica ganha pra sempre. Contador de medalhas (🎖️) visível no Radar.
+- **Fusão barômetro + GPS (bloqueio ALTITUDE)**: a pressão atmosférica é capturada no momento do selamento (quando o aparelho tem barômetro) e usada como sinal primário pra medir ganho de altura no desbloqueio — muito mais sensível que GPS em prédios. O GPS continua como alternativa pra aparelhos sem barômetro. A tela de detalhe mostra qual sensor está sendo usado.
+- **Diferenciação visual de cápsulas importadas**: cada card do Radar agora mostra "🛡️ SUA" ou "📥 IMPORTADA".

@@ -3,6 +3,8 @@ package com.gigawalljfl.geolock.data.repository
 import android.content.Context
 import com.gigawalljfl.geolock.crypto.SpaceTimeCrypto
 import com.gigawalljfl.geolock.data.db.Difficulty
+import com.gigawalljfl.geolock.data.db.EarnedMedal
+import com.gigawalljfl.geolock.data.db.EarnedMedalDao
 import com.gigawalljfl.geolock.data.db.EnvironmentalLock
 import com.gigawalljfl.geolock.data.db.TimeCapsule
 import com.gigawalljfl.geolock.data.db.TimeCapsuleDao
@@ -22,11 +24,19 @@ sealed class UnlockResult {
 
 class CapsuleRepository(
     private val dao: TimeCapsuleDao,
+    private val earnedMedalDao: EarnedMedalDao,
     private val appContext: Context
 ) {
 
     fun observeAll(): Flow<List<TimeCapsule>> = dao.observeAll()
     fun observeUnlockedCount(): Flow<Int> = dao.observeUnlockedCount()
+
+    fun observeEarnedMedals(): Flow<List<EarnedMedal>> = earnedMedalDao.observeAll()
+
+    /** Registra uma medalha como conquistada — se já existir, mantém a data original. */
+    suspend fun recordMedalEarned(medalId: String) {
+        earnedMedalDao.insert(EarnedMedal(medalId = medalId, earnedAtEpochMillis = System.currentTimeMillis()))
+    }
 
     /**
      * Sela uma nova cápsula. A chave de cifragem é derivada usando o
@@ -43,6 +53,7 @@ class CapsuleRepository(
         latitude: Double,
         longitude: Double,
         altitudeMeters: Double?,
+        sealPressureHpa: Float?,
         unlockAtEpochMillis: Long,
         unlockRadiusMeters: Double,
         environmentalLock: EnvironmentalLock,
@@ -71,6 +82,7 @@ class CapsuleRepository(
             sealLatitude = latitude,
             sealLongitude = longitude,
             sealAltitudeMeters = altitudeMeters,
+            sealPressureHpa = sealPressureHpa,
             unlockRadiusMeters = unlockRadiusMeters,
             unlockAtEpochMillis = unlockAtEpochMillis,
             cipherTextBase64 = payload.cipherTextBase64,

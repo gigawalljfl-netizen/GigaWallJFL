@@ -14,7 +14,7 @@ class GeoLockApp : Application() {
     override fun onCreate() {
         super.onCreate()
         val db = GeoLockDatabase.getInstance(this)
-        capsuleRepository = CapsuleRepository(db.timeCapsuleDao(), applicationContext)
+        capsuleRepository = CapsuleRepository(db.timeCapsuleDao(), db.earnedMedalDao(), applicationContext)
 
         // Configuração do osmdroid: cache de tiles em pasta interna do app,
         // evitando a necessidade de permissão de armazenamento externo.

@@ -44,13 +44,19 @@ fun CapsuleDetailScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
     val capsule = capsules.firstOrNull { it.id == selectedId }
 
     var liveLux by remember { mutableStateOf<Float?>(null) }
+    var livePressure by remember { mutableStateOf<Float?>(null) }
 
-    // Só liga o sensor de luz quando a cápsula exige DARKNESS/SUNLIGHT —
-    // evita gastar bateria à toa nas demais.
+    // Só liga o sensor de luz quando a cápsula exige DARKNESS/SUNLIGHT, e
+    // o barômetro só quando exige ALTITUDE — evita gastar bateria à toa.
     LaunchedEffect(capsule?.id) {
         val lock = capsule?.environmentalLock
         if (lock == EnvironmentalLock.DARKNESS || lock == EnvironmentalLock.SUNLIGHT) {
             viewModel.observeLiveLux().collect { liveLux = it }
+        }
+    }
+    LaunchedEffect(capsule?.id) {
+        if (capsule?.environmentalLock == EnvironmentalLock.ALTITUDE) {
+            viewModel.observeLivePressure().collect { livePressure = it }
         }
     }
 
@@ -84,14 +90,18 @@ fun CapsuleDetailScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
             color = if (fix != null) GpsQuality.color(fix!!.accuracyMeters) else Magenta
         )
 
-        val conditionMet = viewModel.isEnvironmentalConditionMet(capsule, liveLux)
+        val conditionMet = viewModel.isEnvironmentalConditionMet(capsule, liveLux, livePressure)
 
         if (capsule.environmentalLock != EnvironmentalLock.NONE) {
             Spacer(Modifier.height(8.dp))
             val statusText = when (capsule.environmentalLock) {
                 EnvironmentalLock.DARKNESS -> "🌑 Luz atual: ${liveLux?.toInt() ?: "--"} lux (precisa < ${SensorRepository.DARKNESS_THRESHOLD_LUX.toInt()})"
                 EnvironmentalLock.SUNLIGHT -> "☀️ Luz atual: ${liveLux?.toInt() ?: "--"} lux (precisa > ${SensorRepository.SUNLIGHT_THRESHOLD_LUX.toInt()})"
-                EnvironmentalLock.ALTITUDE -> "⛰️ Ganho de altitude necessário: ${SensorRepository.ALTITUDE_GAIN_METERS.toInt()}m acima do ponto de selamento"
+                EnvironmentalLock.ALTITUDE -> {
+                    val hasBarometer = capsule.sealPressureHpa != null && livePressure != null
+                    val sensorLabel = if (hasBarometer) "barômetro" else "GPS"
+                    "⛰️ Ganho necessário: ${SensorRepository.ALTITUDE_GAIN_METERS.toInt()}m acima do selamento (via $sensorLabel)"
+                }
                 EnvironmentalLock.NONE -> ""
             }
             Text(statusText, style = MaterialTheme.typography.labelSmall, color = if (conditionMet) MatrixGreen else Magenta)

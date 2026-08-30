@@ -28,9 +28,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 
 /** Um anexo escolhido localmente na tela de selamento, ainda não cifrado. */
@@ -86,19 +88,32 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
     val importFeedback: StateFlow<String?> = _importFeedback.asStateFlow()
 
     val gamificationState: StateFlow<GamificationState> = capsules
-        .combine(capsuleRepository.observeUnlockedCount()) { all, unlockedCount ->
+        .combine(capsuleRepository.observeUnlockedCount()) { all, unlockedCount -> all to unlockedCount }
+        .combine(capsuleRepository.observeEarnedMedals()) { (all, unlockedCount), earned ->
             val created = all.count { it.isOwnedByCreator }
-            val medals = buildSet {
+            val nowEligible = buildSet {
                 if (created >= 1) add(Medal.PIONEIRO_GEOLOCK)
                 if (unlockedCount >= 5) add(Medal.EXPLORADOR_AVIDO)
                 if (all.any { it.isUnlocked && it.environmentalLock != EnvironmentalLock.NONE }) add(Medal.MESTRE_DO_CLIMA)
                 if (all.any { it.isOwnedByCreator && it.difficulty == Difficulty.ESPECIALISTA }) add(Medal.GUARDIAO_QUANTICO)
             }
+            // Toda medalha recém-elegível e ainda não persistida é gravada
+            // agora — dali em diante ela nunca mais "some", mesmo que a
+            // cápsula que a rendeu seja apagada depois.
+            val earnedIds = earned.mapNotNull { it.medal?.name }.toSet()
+            val newlyEarned = nowEligible.filter { it.name !in earnedIds }
+            if (newlyEarned.isNotEmpty()) {
+                viewModelScope.launch {
+                    newlyEarned.forEach { capsuleRepository.recordMedalEarned(it.name) }
+                }
+            }
+            val persistedMedals = earned.mapNotNull { it.medal }.toSet() + nowEligible
+
             GamificationState(
                 xp = created * XpValues.XP_PER_CAPSULE_SEALED + unlockedCount * XpValues.XP_PER_CAPSULE_UNLOCKED,
                 capsulesCreated = created,
                 capsulesUnlocked = unlockedCount,
-                unlockedMedals = medals
+                unlockedMedals = persistedMedals
             )
         }
         .stateIn(
@@ -162,6 +177,7 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
                 _sealState.value = SealState.NoGpsFix
                 return@launch
             }
+            val sealPressure = readPressureOnce()
             _sealState.value = SealState.Saving
             capsuleRepository.sealCapsule(
                 title = title,
@@ -170,6 +186,7 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
                 latitude = averagedFix.latitude,
                 longitude = averagedFix.longitude,
                 altitudeMeters = averagedFix.altitudeMeters,
+                sealPressureHpa = sealPressure,
                 unlockAtEpochMillis = unlockAtEpochMillis,
                 unlockRadiusMeters = unlockRadiusMeters,
                 environmentalLock = environmentalLock,
@@ -182,6 +199,11 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /** Colhe uma única leitura do barômetro (quando disponível), com timeout curto. */
+    private suspend fun readPressureOnce(): Float? = withTimeoutOrNull(1200L) {
+        sensorRepository.observePressure().first()
+    }
+
     fun resetSealState() {
         _sealState.value = SealState.Idle
     }
@@ -189,25 +211,34 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
     /**
      * Calcula se a condição ambiental exigida pela cápsula está satisfeita
      * agora, a partir de uma leitura de lux ao vivo (para DARKNESS/SUNLIGHT)
-     * e da altitude do GeoFix atual comparada à altitude de selamento (para
-     * ALTITUDE, usando GPS/altimetria de satélite conforme a spec permite).
+     * e, para ALTITUDE, de uma FUSÃO barômetro+GPS: o barômetro é muito
+     * mais sensível a pequenos ganhos de altura (útil em prédios, onde o
+     * GPS erra facilmente), então é usado como sinal primário quando
+     * disponível — a condição também aceita o ganho medido só por GPS
+     * como alternativa, pra não travar em aparelhos sem barômetro ou
+     * quando o sensor falhar.
      */
-    fun isEnvironmentalConditionMet(capsule: TimeCapsule, liveLux: Float?): Boolean {
+    fun isEnvironmentalConditionMet(capsule: TimeCapsule, liveLux: Float?, livePressureHpa: Float? = null): Boolean {
         return when (capsule.environmentalLock) {
             EnvironmentalLock.NONE -> true
             EnvironmentalLock.DARKNESS -> (liveLux ?: Float.MAX_VALUE) < SensorRepository.DARKNESS_THRESHOLD_LUX
             EnvironmentalLock.SUNLIGHT -> (liveLux ?: 0f) > SensorRepository.SUNLIGHT_THRESHOLD_LUX
             EnvironmentalLock.ALTITUDE -> {
-                val current = _currentFix.value?.altitudeMeters
-                val sealed = capsule.sealAltitudeMeters
-                if (current != null && sealed != null) {
-                    (current - sealed) >= SensorRepository.ALTITUDE_GAIN_METERS
-                } else false
+                val barometricGain = if (livePressureHpa != null && capsule.sealPressureHpa != null) {
+                    SensorRepository.pressureToAltitude(livePressureHpa, capsule.sealPressureHpa)
+                } else null
+                val gpsGain = _currentFix.value?.altitudeMeters?.let { current ->
+                    capsule.sealAltitudeMeters?.let { sealed -> current - sealed }
+                }
+                val metByBarometer = barometricGain != null && barometricGain >= SensorRepository.ALTITUDE_GAIN_METERS
+                val metByGps = gpsGain != null && gpsGain >= SensorRepository.ALTITUDE_GAIN_METERS
+                metByBarometer || metByGps
             }
         }
     }
 
     fun observeLiveLux() = sensorRepository.observeLight()
+    fun observeLivePressure() = sensorRepository.observePressure()
 
     fun attemptUnlock(capsuleId: String, environmentalConditionMet: Boolean) {
         if (_currentFix.value == null) {

@@ -21,11 +21,12 @@ class Converters {
     fun toDifficulty(value: String): Difficulty = Difficulty.valueOf(value)
 }
 
-@Database(entities = [TimeCapsule::class], version = 3, exportSchema = false)
+@Database(entities = [TimeCapsule::class, EarnedMedal::class], version = 4, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class GeoLockDatabase : RoomDatabase() {
 
     abstract fun timeCapsuleDao(): TimeCapsuleDao
+    abstract fun earnedMedalDao(): EarnedMedalDao
 
     companion object {
         @Volatile
