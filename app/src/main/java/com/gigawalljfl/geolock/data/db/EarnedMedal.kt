@@ -1,6 +1,7 @@
 package com.gigawalljfl.geolock.data.db
 
 import androidx.room.Entity
+import androidx.room.Ignore
 import androidx.room.PrimaryKey
 import com.gigawalljfl.geolock.gamification.Medal
 
@@ -15,5 +16,8 @@ data class EarnedMedal(
     @PrimaryKey val medalId: String,
     val earnedAtEpochMillis: Long
 ) {
-    val medal: Medal? get() = Medal.entries.find { it.name == medalId }
+    // @Ignore garante que o Room nunca tente tratar isso como uma coluna —
+    // é só uma conveniência computada a partir de medalId, nunca persistida.
+    @Ignore
+    val medal: Medal? = Medal.entries.find { it.name == medalId }
 }

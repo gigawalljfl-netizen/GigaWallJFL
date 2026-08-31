@@ -79,3 +79,11 @@ Limitação honesta: o ML Kit não vem com classificador embutido que diferencie
 - **Persistência de medalhas**: medalhas agora são gravadas com data de conquista numa tabela própria (`earned_medals`). Antes eram recalculadas a partir das cápsulas atuais — se apagasses uma cápsula, a medalha que ela rendeu sumia. Agora, uma vez ganha, fica ganha pra sempre. Contador de medalhas (🎖️) visível no Radar.
 - **Fusão barômetro + GPS (bloqueio ALTITUDE)**: a pressão atmosférica é capturada no momento do selamento (quando o aparelho tem barômetro) e usada como sinal primário pra medir ganho de altura no desbloqueio — muito mais sensível que GPS em prédios. O GPS continua como alternativa pra aparelhos sem barômetro. A tela de detalhe mostra qual sensor está sendo usado.
 - **Diferenciação visual de cápsulas importadas**: cada card do Radar agora mostra "🛡️ SUA" ou "📥 IMPORTADA".
+
+## UX e segurança (v1.6.0)
+- **Apagar/editar cápsula**: botões na tela de detalhe. Apagar remove também o anexo cifrado do disco. Editar é limitado a título/pista — local, hora e mensagem estão fundidos na chave de criptografia e nunca podem mudar.
+- **Onboarding**: tela de boas-vindas explicando geofence + tempo + ambiente, mostrada só na primeira abertura (flag em SharedPreferences).
+- **Tela de medalhas**: lista todas as medalhas possíveis, com emoji, descrição, e data de conquista pra quem já ganhou. Acesse tocando no rank/XP no Radar.
+- **Backup cifrado por senha**: exporta a coleção inteira de cápsulas (mensagens; anexos ficam de fora) cifrada com AES-256-GCM + PBKDF2 (120 mil iterações) numa tela de Configurações nova. Restaurar pede a mesma senha.
+- **Bloqueio do app por PIN/biometria**: opcional, via BiometricPrompt do Android — usa a biometria/PIN já configurado no aparelho, o GeoLock não guarda senha própria nenhuma. Ativa/desativa em Configurações.
+- MainActivity agora estende FragmentActivity (exigência do BiometricPrompt).

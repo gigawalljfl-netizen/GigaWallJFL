@@ -12,7 +12,9 @@ import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.gigawalljfl.geolock.GeoLockApp
+import com.gigawalljfl.geolock.backup.BackupManager
 import com.gigawalljfl.geolock.data.db.Difficulty
+import com.gigawalljfl.geolock.data.db.EarnedMedal
 import com.gigawalljfl.geolock.data.db.EnvironmentalLock
 import com.gigawalljfl.geolock.data.db.TimeCapsule
 import com.gigawalljfl.geolock.data.repository.UnlockResult
@@ -286,29 +288,72 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
         val mimeType = capsule.attachmentMimeType ?: "application/octet-stream"
 
         viewModelScope.launch(Dispatchers.IO) {
-            val success = try {
-                val context = getApplication<Application>()
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    val values = ContentValues().apply {
-                        put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                        put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-                    }
-                    val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                    uri?.let { context.contentResolver.openOutputStream(it)?.use { out -> out.write(bytes) } }
-                    uri != null
-                } else {
-                    @Suppress("DEPRECATION")
-                    val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                    val file = File(downloadsDir, fileName)
-                    file.writeBytes(bytes)
-                    true
-                }
-            } catch (e: Exception) {
-                false
-            }
+            val success = saveBytesToDownloads(bytes, fileName, mimeType)
             _saveFeedback.value = if (success) "Salvo em Downloads/$fileName" else "Não foi possível salvar o arquivo."
         }
+    }
+
+    /** Grava bytes arbitrários em Downloads — usado tanto pra anexos quanto pra backups. */
+    private fun saveBytesToDownloads(bytes: ByteArray, fileName: String, mimeType: String): Boolean {
+        return try {
+            val context = getApplication<Application>()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                }
+                val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                uri?.let { context.contentResolver.openOutputStream(it)?.use { out -> out.write(bytes) } }
+                uri != null
+            } else {
+                @Suppress("DEPRECATION")
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                File(downloadsDir, fileName).writeBytes(bytes)
+                true
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private val _backupFeedback = MutableStateFlow<String?>(null)
+    val backupFeedback: StateFlow<String?> = _backupFeedback.asStateFlow()
+
+    /** Gera um backup cifrado por senha de TODAS as cápsulas (mensagens; anexos não entram) e salva em Downloads. */
+    fun exportBackup(passphrase: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val bytes = BackupManager.export(capsules.value, passphrase)
+                val fileName = "geolock_backup_${System.currentTimeMillis()}.glbk"
+                val success = saveBytesToDownloads(bytes, fileName, "application/octet-stream")
+                _backupFeedback.value = if (success) "Backup salvo em Downloads/$fileName" else "Não foi possível salvar o backup."
+            } catch (e: Exception) {
+                _backupFeedback.value = "Erro ao gerar backup — tenta de novo."
+            }
+        }
+    }
+
+    /** Lê um arquivo de backup escolhido pelo usuário, decifra com a senha e restaura as cápsulas. */
+    fun importBackup(uri: Uri, passphrase: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val fileData = readAttachmentFromUri(uri)
+            if (fileData == null) {
+                _backupFeedback.value = "Não foi possível ler o arquivo."
+                return@launch
+            }
+            val restored = BackupManager.import(fileData.bytes, passphrase)
+            if (restored == null) {
+                _backupFeedback.value = "Senha incorreta ou arquivo de backup inválido."
+                return@launch
+            }
+            restored.forEach { capsuleRepository.restoreCapsule(it) }
+            _backupFeedback.value = "${restored.size} cápsula(s) restaurada(s) com sucesso."
+        }
+    }
+
+    fun clearBackupFeedback() {
+        _backupFeedback.value = null
     }
 
     fun clearSaveFeedback() {
@@ -339,5 +384,23 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
             capsule.sealLatitude, capsule.sealLongitude,
             fix.latitude, fix.longitude
         )
+    }
+
+    val earnedMedals: StateFlow<List<EarnedMedal>> = capsuleRepository.observeEarnedMedals()
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, emptyList())
+
+    fun deleteCapsule(capsule: TimeCapsule) {
+        viewModelScope.launch {
+            capsuleRepository.delete(capsule)
+        }
+        if (_selectedCapsuleId.value == capsule.id) {
+            _selectedCapsuleId.value = null
+        }
+    }
+
+    fun updateCapsuleTitleAndHint(capsule: TimeCapsule, newTitle: String, newHint: String) {
+        viewModelScope.launch {
+            capsuleRepository.updateTitleAndHint(capsule, newTitle, newHint)
+        }
     }
 }

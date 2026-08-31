@@ -2,14 +2,23 @@ package com.gigawalljfl.geolock.ui.screens
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -43,6 +52,11 @@ fun CapsuleDetailScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
     val isCalibrating by viewModel.isCalibratingUnlock.collectAsState()
     val capsule = capsules.firstOrNull { it.id == selectedId }
 
+    var isEditing by remember { mutableStateOf(false) }
+    var editTitle by remember(capsule?.id) { mutableStateOf(capsule?.title ?: "") }
+    var editHint by remember(capsule?.id) { mutableStateOf(capsule?.hint ?: "") }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
     var liveLux by remember { mutableStateOf<Float?>(null) }
     var livePressure by remember { mutableStateOf<Float?>(null) }
 
@@ -67,7 +81,18 @@ fun CapsuleDetailScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        TextButton(onClick = onBack) { Text("← VOLTAR", color = NeonCyan) }
+        Row(modifier = Modifier.fillMaxWidth()) {
+            TextButton(onClick = onBack) { Text("← VOLTAR", color = NeonCyan) }
+            Spacer(Modifier.weight(1f))
+            if (capsule != null) {
+                IconButton(onClick = { isEditing = !isEditing }) {
+                    Icon(Icons.Filled.Edit, contentDescription = "Editar título/pista", tint = NeonCyan)
+                }
+                IconButton(onClick = { showDeleteConfirm = true }) {
+                    Icon(Icons.Filled.Delete, contentDescription = "Apagar cápsula", tint = Magenta)
+                }
+            }
+        }
         Spacer(Modifier.height(8.dp))
 
         if (capsule == null) {
@@ -75,7 +100,44 @@ fun CapsuleDetailScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
             return@Column
         }
 
-        Text(capsule.title, style = MaterialTheme.typography.titleLarge, color = NeonCyan)
+        if (showDeleteConfirm) {
+            AlertDialog(
+                onDismissRequest = { showDeleteConfirm = false },
+                title = { Text("Apagar cápsula?") },
+                text = { Text("\"${capsule.title}\" será apagada pra sempre, junto com qualquer anexo. Isso não pode ser desfeito.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showDeleteConfirm = false
+                        viewModel.deleteCapsule(capsule)
+                        onBack()
+                    }) { Text("APAGAR", color = Magenta) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancelar") }
+                }
+            )
+        }
+
+        if (isEditing) {
+            OutlinedTextField(value = editTitle, onValueChange = { editTitle = it }, label = { Text("Título") }, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(value = editHint, onValueChange = { editHint = it }, label = { Text("Pista de busca") }, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = {
+                    viewModel.updateCapsuleTitleAndHint(capsule, editTitle.ifBlank { capsule.title }, editHint)
+                    isEditing = false
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("SALVAR") }
+            Text(
+                "Só título e pista são editáveis — local, hora e mensagem estão fundidos na chave de criptografia e nunca mudam.",
+                style = MaterialTheme.typography.labelSmall,
+                color = NeonCyan
+            )
+        } else {
+            Text(capsule.title, style = MaterialTheme.typography.titleLarge, color = NeonCyan)
+        }
         Spacer(Modifier.height(4.dp))
         Text("Pista: ${capsule.hint}", style = MaterialTheme.typography.bodyMedium, color = MatrixGreen)
         Spacer(Modifier.height(4.dp))

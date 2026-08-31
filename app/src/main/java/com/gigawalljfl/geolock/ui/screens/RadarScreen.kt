@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -51,7 +52,9 @@ fun RadarScreen(
     onOpenAr: (String) -> Unit,
     onScanQr: () -> Unit,
     onExportQr: (String) -> Unit,
-    onOpenMap: () -> Unit
+    onOpenMap: () -> Unit,
+    onOpenMedals: () -> Unit,
+    onOpenSettings: () -> Unit
 ) {
     val capsules by viewModel.capsules.collectAsState()
     val fix by viewModel.currentFix.collectAsState()
@@ -72,10 +75,14 @@ fun RadarScreen(
                 Text(
                     "${gamification.rank.emoji} ${gamification.rank.displayName}  ·  XP ${gamification.xp}  ·  🎖️ ${gamification.unlockedMedals.size}",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MatrixGreen
+                    color = MatrixGreen,
+                    modifier = Modifier.clickable { onOpenMedals() }
                 )
             }
             Row {
+                IconButton(onClick = onOpenSettings) {
+                    Icon(Icons.Filled.Settings, contentDescription = "Configurações", tint = NeonCyan)
+                }
                 IconButton(onClick = onOpenMap) {
                     Icon(Icons.Filled.Map, contentDescription = "Ver mapa tático", tint = NeonCyan)
                 }

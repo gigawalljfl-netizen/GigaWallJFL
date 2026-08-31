@@ -176,5 +176,27 @@ class CapsuleRepository(
         dao.insert(capsule.copy(isOwnedByCreator = false, isUnlocked = false, unlockedAtEpochMillis = null))
     }
 
-    suspend fun delete(capsule: TimeCapsule) = dao.delete(capsule)
+    /**
+     * Restaura uma cápsula a partir de um backup cifrado (ver BackupManager)
+     * — diferente da importação por QR, preserva TODOS os campos originais
+     * (incluindo isOwnedByCreator), já que é a mesma coleção, não a de outra
+     * pessoa.
+     */
+    suspend fun restoreCapsule(capsule: TimeCapsule) {
+        dao.insert(capsule)
+    }
+
+    /** Edita apenas título e pista — os campos criptográficos (local/tempo/mensagem) nunca são alteráveis. */
+    suspend fun updateTitleAndHint(capsule: TimeCapsule, newTitle: String, newHint: String) {
+        dao.update(capsule.copy(title = newTitle, hint = newHint))
+    }
+
+    /** Apaga a cápsula e, se houver, o arquivo de anexo cifrado associado em disco. */
+    suspend fun delete(capsule: TimeCapsule) {
+        capsule.encryptedMediaPath?.let { path ->
+            val file = File(path)
+            if (file.exists()) file.delete()
+        }
+        dao.delete(capsule)
+    }
 }

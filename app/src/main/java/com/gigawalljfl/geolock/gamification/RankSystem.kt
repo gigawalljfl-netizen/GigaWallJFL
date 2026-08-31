@@ -12,11 +12,11 @@ enum class CyberRank(val displayName: String, val emoji: String, val minUnlocked
     }
 }
 
-enum class Medal(val displayName: String, val description: String) {
-    PIONEIRO_GEOLOCK("Pioneiro GeoLock", "Selou a primeira cápsula"),
-    EXPLORADOR_AVIDO("Explorador Ávido", "Desbloqueou 5 cápsulas"),
-    MESTRE_DO_CLIMA("Mestre do Clima", "Desbloqueou uma cápsula com bloqueio ambiental"),
-    GUARDIAO_QUANTICO("Guardião Quântico", "Criou uma cápsula de dificuldade Especialista")
+enum class Medal(val displayName: String, val description: String, val emoji: String) {
+    PIONEIRO_GEOLOCK("Pioneiro GeoLock", "Selou a primeira cápsula", "🥇"),
+    EXPLORADOR_AVIDO("Explorador Ávido", "Desbloqueou 5 cápsulas", "🧭"),
+    MESTRE_DO_CLIMA("Mestre do Clima", "Desbloqueou uma cápsula com bloqueio ambiental", "🌦️"),
+    GUARDIAO_QUANTICO("Guardião Quântico", "Criou uma cápsula de dificuldade Especialista", "🔮")
 }
 
 data class GamificationState(
