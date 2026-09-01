@@ -52,13 +52,13 @@ import com.gigawalljfl.geolock.ui.theme.Magenta
 import com.gigawalljfl.geolock.ui.theme.NeonCyan
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.io.ByteArrayOutputStream
 
 @Composable
 fun SealCapsuleScreen(viewModel: GeoLockViewModel, onDone: () -> Unit) {
     val coroutineScope = rememberCoroutineScope()
     val sealState by viewModel.sealState.collectAsState()
     val fix by viewModel.currentFix.collectAsState()
+    val isProcessingImage by viewModel.isProcessingImage.collectAsState()
 
     var title by remember { mutableStateOf("") }
     var hint by remember { mutableStateOf("") }
@@ -73,18 +73,18 @@ fun SealCapsuleScreen(viewModel: GeoLockViewModel, onDone: () -> Unit) {
         ActivityResultContracts.TakePicturePreview()
     ) { bitmap: Bitmap? ->
         bitmap?.let { bmp ->
-            val stream = ByteArrayOutputStream()
-            bmp.compress(Bitmap.CompressFormat.JPEG, 85, stream)
-            attachment = PendingAttachment(stream.toByteArray(), "foto.jpg", "image/jpeg")
+            coroutineScope.launch {
+                attachment = viewModel.compressBitmapForAttachment(bmp)
+            }
         }
     }
 
-    val filePickerLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetContent()
+    val galleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
     ) { uri ->
-        if (uri != null) {
+        uri?.let {
             coroutineScope.launch {
-                attachment = viewModel.readAttachmentFromUri(uri)
+                attachment = viewModel.compressImageFromUri(it)
             }
         }
     }
@@ -159,36 +159,52 @@ fun SealCapsuleScreen(viewModel: GeoLockViewModel, onDone: () -> Unit) {
         )
 
         Spacer(Modifier.height(12.dp))
-        Text("Anexo (opcional)", style = MaterialTheme.typography.labelSmall, color = MatrixGreen)
+        Text("Imagem de referência (opcional)", style = MaterialTheme.typography.labelSmall, color = MatrixGreen)
+        Text(
+            "Pra quando o local é algo específico — um bar, um banco, uma loja. Só imagens: tirar foto agora ou escolher da galeria.",
+            style = MaterialTheme.typography.labelSmall,
+            color = NeonCyan
+        )
         Spacer(Modifier.height(4.dp))
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            OutlinedButton(onClick = { cameraLauncher.launch(null) }) {
-                Text("📷 FOTO")
+            OutlinedButton(onClick = { cameraLauncher.launch(null) }, enabled = !isProcessingImage) {
+                Text("📷 TIRAR FOTO")
             }
             Spacer(Modifier.width(8.dp))
-            OutlinedButton(onClick = { filePickerLauncher.launch("*/*") }) {
-                Text("📎 ARQUIVO")
+            OutlinedButton(
+                onClick = {
+                    val request = androidx.activity.result.PickVisualMediaRequest.Builder()
+                        .setMediaType(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        .build()
+                    galleryLauncher.launch(request)
+                },
+                enabled = !isProcessingImage
+            ) {
+                Text("🖼️ GALERIA")
             }
+        }
+
+        if (isProcessingImage) {
+            Spacer(Modifier.height(8.dp))
+            Text("Comprimindo imagem…", style = MaterialTheme.typography.labelSmall, color = NeonCyan)
         }
 
         attachment?.let { att ->
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                if (att.mimeType.startsWith("image/")) {
-                    val bmp = remember(att) { BitmapFactory.decodeByteArray(att.bytes, 0, att.bytes.size) }
-                    bmp?.let {
-                        Image(
-                            bitmap = it.asImageBitmap(),
-                            contentDescription = "Anexo selecionado",
-                            modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp))
-                        )
-                        Spacer(Modifier.width(8.dp))
-                    }
+                val bmp = remember(att) { BitmapFactory.decodeByteArray(att.bytes, 0, att.bytes.size) }
+                bmp?.let {
+                    Image(
+                        bitmap = it.asImageBitmap(),
+                        contentDescription = "Imagem selecionada",
+                        modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp))
+                    )
+                    Spacer(Modifier.width(8.dp))
                 }
                 Column {
                     Text(att.fileName, style = MaterialTheme.typography.bodyMedium, color = NeonCyan)
                     Text(
-                        "${att.mimeType} · ${att.bytes.size / 1024} KB",
+                        "${att.bytes.size / 1024} KB (comprimida)",
                         style = MaterialTheme.typography.labelSmall,
                         color = MatrixGreen
                     )
@@ -196,7 +212,7 @@ fun SealCapsuleScreen(viewModel: GeoLockViewModel, onDone: () -> Unit) {
             }
         }
         Text(
-            "O anexo é cifrado com a mesma chave espaço-temporal da mensagem — só é revelado junto com ela.",
+            "A imagem é cifrada com a mesma chave espaço-temporal da mensagem — só é revelada junto com ela.",
             style = MaterialTheme.typography.labelSmall,
             color = NeonCyan
         )

@@ -87,3 +87,9 @@ Limitação honesta: o ML Kit não vem com classificador embutido que diferencie
 - **Backup cifrado por senha**: exporta a coleção inteira de cápsulas (mensagens; anexos ficam de fora) cifrada com AES-256-GCM + PBKDF2 (120 mil iterações) numa tela de Configurações nova. Restaurar pede a mesma senha.
 - **Bloqueio do app por PIN/biometria**: opcional, via BiometricPrompt do Android — usa a biometria/PIN já configurado no aparelho, o GeoLock não guarda senha própria nenhuma. Ativa/desativa em Configurações.
 - MainActivity agora estende FragmentActivity (exigência do BiometricPrompt).
+
+## Anexo restrito a imagens comprimidas (v1.7.0)
+- Removida a opção de anexar qualquer arquivo — agora só imagens, com duas opções: 📷 tirar foto agora ou 🖼️ escolher da galeria (via Photo Picker do Android, que não pede nenhuma permissão de armazenamento).
+- Toda imagem passa por `ImageCompressor`: remove todo metadado EXIF (inclusive GPS embutido — bom pra privacidade), reduz resolução pro máximo necessário pra uma foto de referência (1600px no lado maior), e ajusta a qualidade JPEG iterativamente até caber em ~200KB, com piso de qualidade pra nunca ficar visivelmente "blocada". Se mesmo no piso ainda estiver grande, reduz mais a resolução em vez de forçar mais compressão.
+- Caso de uso: uma foto do local (bar, banco, loja) junto da mensagem — cápsulas de só texto continuam ocupando espaço mínimo.
+- Compatibilidade: cápsulas antigas com anexo não-imagem (de antes dessa mudança) continuam abrindo normalmente — a tela de detalhe ainda sabe mostrar "salvar em Downloads" pra qualquer mimetype que não seja imagem.

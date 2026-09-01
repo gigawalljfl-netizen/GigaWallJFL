@@ -23,6 +23,7 @@ import com.gigawalljfl.geolock.gamification.Medal
 import com.gigawalljfl.geolock.gamification.XpValues
 import com.gigawalljfl.geolock.location.GeoFix
 import com.gigawalljfl.geolock.location.LocationRepository
+import com.gigawalljfl.geolock.media.ImageCompressor
 import com.gigawalljfl.geolock.qr.CapsuleQrCodec
 import com.gigawalljfl.geolock.sensors.SensorRepository
 import kotlinx.coroutines.Dispatchers
@@ -140,9 +141,11 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * Lê qualquer arquivo escolhido pelo usuário (via ActivityResultContracts.GetContent)
-     * a partir do seu Uri de conteúdo — nome, mimetype e bytes — sem exigir
-     * permissão persistente, já que o conteúdo é lido e cifrado imediatamente.
+     * Lê um arquivo bruto a partir do seu Uri — usado hoje só pra ler o
+     * arquivo de backup cifrado (.glbk) na hora de restaurar (ver
+     * importBackup). Anexos de cápsula não usam mais isso — desde que a
+     * opção de anexar arquivo qualquer foi removida, anexos são sempre
+     * imagem e passam por compressImageFromUri/compressBitmapForAttachment.
      */
     suspend fun readAttachmentFromUri(uri: Uri): PendingAttachment? = withContext(Dispatchers.IO) {
         val resolver = getApplication<Application>().contentResolver
@@ -156,6 +159,33 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
         }
         val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
         PendingAttachment(bytes, fileName, mimeType)
+    }
+
+    private val _isProcessingImage = MutableStateFlow(false)
+    val isProcessingImage: StateFlow<Boolean> = _isProcessingImage.asStateFlow()
+
+    /** Comprime uma foto tirada agora pela câmera antes de anexar à cápsula. */
+    suspend fun compressBitmapForAttachment(bitmap: Bitmap): PendingAttachment {
+        _isProcessingImage.value = true
+        try {
+            val bytes = withContext(Dispatchers.Default) { ImageCompressor.compressBitmap(bitmap) }
+            return PendingAttachment(bytes, "foto_${System.currentTimeMillis()}.jpg", "image/jpeg")
+        } finally {
+            _isProcessingImage.value = false
+        }
+    }
+
+    /** Lê e comprime uma imagem escolhida na galeria antes de anexar à cápsula. */
+    suspend fun compressImageFromUri(uri: Uri): PendingAttachment? {
+        _isProcessingImage.value = true
+        try {
+            val bytes = withContext(Dispatchers.IO) {
+                ImageCompressor.loadAndCompressFromUri(getApplication(), uri)
+            } ?: return null
+            return PendingAttachment(bytes, "imagem_${System.currentTimeMillis()}.jpg", "image/jpeg")
+        } finally {
+            _isProcessingImage.value = false
+        }
     }
 
     fun sealCapsule(

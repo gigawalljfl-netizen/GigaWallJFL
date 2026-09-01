@@ -13,8 +13,8 @@ android {
         applicationId = "com.gigawalljfl.geolock"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "1.6.0"
+        versionCode = 8
+        versionName = "1.7.0"
     }
 
     buildTypes {
@@ -69,6 +69,9 @@ dependencies {
 
     // Location
     implementation("com.google.android.gms:play-services-location:21.3.0")
+
+    // Leitura de orientação EXIF antes de recomprimir a imagem
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
 
     // Bloqueio do app por PIN/biometria
     implementation("androidx.biometric:biometric:1.1.0")
