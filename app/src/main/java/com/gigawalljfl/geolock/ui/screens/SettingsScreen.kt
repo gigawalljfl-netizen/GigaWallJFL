@@ -12,7 +12,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -21,6 +25,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +50,20 @@ fun SettingsScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
     var appLockEnabled by remember { mutableStateOf(AppPreferences.isAppLockEnabled(context)) }
     val backupFeedback by viewModel.backupFeedback.collectAsState()
 
+    val currentUser by viewModel.currentUser.collectAsState()
+    val authFeedback by viewModel.authFeedback.collectAsState()
+    val isAuthLoading by viewModel.isAuthLoading.collectAsState()
+    var authEmail by remember { mutableStateOf("") }
+    var authPassword by remember { mutableStateOf("") }
+    var isSignUpMode by remember { mutableStateOf(false) }
+
+    LaunchedEffect(authFeedback) {
+        authFeedback?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            viewModel.clearAuthFeedback()
+        }
+    }
+
     val importPickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri ->
@@ -57,12 +76,70 @@ fun SettingsScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
+    ) {
         TextButton(onClick = onBack) { Text("← VOLTAR", color = NeonCyan) }
         Spacer(Modifier.height(8.dp))
         Text("CONFIGURAÇÕES", style = MaterialTheme.typography.titleLarge, color = NeonCyan)
         Spacer(Modifier.height(24.dp))
 
+        Text("CONTA", style = MaterialTheme.typography.titleMedium, color = MatrixGreen)
+        Text(
+            "Opcional — só necessária pra sincronizar progresso e imagens entre aparelhos futuramente. O app continua funcionando 100% sem conta, como sempre.",
+            style = MaterialTheme.typography.labelSmall,
+            color = NeonCyan
+        )
+        Spacer(Modifier.height(12.dp))
+
+        if (currentUser != null) {
+            Text("Conectado como ${currentUser!!.email}", style = MaterialTheme.typography.bodyMedium, color = MatrixGreen)
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = { viewModel.signOut() }, modifier = Modifier.fillMaxWidth()) {
+                Text("SAIR DA CONTA")
+            }
+        } else {
+            OutlinedTextField(
+                value = authEmail,
+                onValueChange = { authEmail = it },
+                label = { Text("E-mail") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = authPassword,
+                onValueChange = { authPassword = it },
+                label = { Text("Senha") },
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = {
+                    if (isSignUpMode) viewModel.signUp(authEmail, authPassword) else viewModel.signIn(authEmail, authPassword)
+                },
+                enabled = !isAuthLoading,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (isAuthLoading) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                } else {
+                    Text(if (isSignUpMode) "CRIAR CONTA" else "ENTRAR")
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            TextButton(onClick = { isSignUpMode = !isSignUpMode }) {
+                Text(
+                    if (isSignUpMode) "Já tenho conta — entrar" else "Não tenho conta — criar uma",
+                    color = NeonCyan
+                )
+            }
+        }
+
+        Spacer(Modifier.height(32.dp))
         Text("BACKUP CIFRADO", style = MaterialTheme.typography.titleMedium, color = MatrixGreen)
         Text(
             "Guarda uma cópia de todas as tuas cápsulas cifrada por senha — protege contra perda do aparelho. Anexos (fotos/arquivos) não entram no backup.",

@@ -93,3 +93,25 @@ Limitação honesta: o ML Kit não vem com classificador embutido que diferencie
 - Toda imagem passa por `ImageCompressor`: remove todo metadado EXIF (inclusive GPS embutido — bom pra privacidade), reduz resolução pro máximo necessário pra uma foto de referência (1600px no lado maior), e ajusta a qualidade JPEG iterativamente até caber em ~200KB, com piso de qualidade pra nunca ficar visivelmente "blocada". Se mesmo no piso ainda estiver grande, reduz mais a resolução em vez de forçar mais compressão.
 - Caso de uso: uma foto do local (bar, banco, loja) junto da mensagem — cápsulas de só texto continuam ocupando espaço mínimo.
 - Compatibilidade: cápsulas antigas com anexo não-imagem (de antes dessa mudança) continuam abrindo normalmente — a tela de detalhe ainda sabe mostrar "salvar em Downloads" pra qualquer mimetype que não seja imagem.
+
+## Firebase Auth — login opcional (v1.8.0)
+
+⚠️ **ESTE BUILD SÓ COMPILA DEPOIS DE ADICIONAR `google-services.json` EM `app/`** — ver instruções abaixo. Sem esse arquivo, o Gradle falha de propósito (mensagem clara: "File google-services.json is missing").
+
+- Nova seção "CONTA" em Configurações: criar conta ou entrar com e-mail/senha, ver e-mail conectado, sair da conta.
+- `AuthRepository` — só envolve o Firebase Auth (signUp/signIn/signOut, estado do usuário como Flow, obtenção do ID token).
+- Totalmente opcional — o app continua funcionando 100% sem login, exatamente como sempre. Login só existirá pra habilitar sincronização (próxima etapa: Supabase Storage).
+
+### Passo a passo pra desbloquear o build
+
+**1. Firebase Console** (console.firebase.google.com):
+1. "Adicionar projeto" → nomeia (ex.: GeoLock) → pode desativar o Google Analytics → Criar.
+2. Dentro do projeto, ícone Android → package name **exatamente** `com.gigawalljfl.geolock` → Registrar app.
+3. Baixa o `google-services.json` → coloca em `GeoLock/app/google-services.json` (mesma pasta do `build.gradle.kts` do módulo app).
+4. Pula os passos de "adicionar SDK" no console (o Gradle já está configurado) → Continuar pro console.
+5. Menu lateral → Build → Authentication → Get Started → aba "Sign-in method" → ativa "E-mail/senha" → Salvar.
+
+**2. No Termux**, depois de baixar o `google-services.json` pro telemóvel:
+```bash
+mv ~/storage/downloads/google-services.json ~/GeoLock/app/google-services.json
+```

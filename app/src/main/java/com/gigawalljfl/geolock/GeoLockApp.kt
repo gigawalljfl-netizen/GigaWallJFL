@@ -1,6 +1,7 @@
 package com.gigawalljfl.geolock
 
 import android.app.Application
+import com.gigawalljfl.geolock.auth.AuthRepository
 import com.gigawalljfl.geolock.data.db.GeoLockDatabase
 import com.gigawalljfl.geolock.data.repository.CapsuleRepository
 import org.osmdroid.config.Configuration
@@ -10,11 +11,14 @@ class GeoLockApp : Application() {
 
     lateinit var capsuleRepository: CapsuleRepository
         private set
+    lateinit var authRepository: AuthRepository
+        private set
 
     override fun onCreate() {
         super.onCreate()
         val db = GeoLockDatabase.getInstance(this)
         capsuleRepository = CapsuleRepository(db.timeCapsuleDao(), db.earnedMedalDao(), applicationContext)
+        authRepository = AuthRepository()
 
         // Configuração do osmdroid: cache de tiles em pasta interna do app,
         // evitando a necessidade de permissão de armazenamento externo.

@@ -12,6 +12,8 @@ import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.gigawalljfl.geolock.GeoLockApp
+import com.gigawalljfl.geolock.auth.AuthRepository
+import com.gigawalljfl.geolock.auth.AuthResult
 import com.gigawalljfl.geolock.backup.BackupManager
 import com.gigawalljfl.geolock.data.db.Difficulty
 import com.gigawalljfl.geolock.data.db.EarnedMedal
@@ -57,6 +59,55 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
 
     private val app = application as GeoLockApp
     private val capsuleRepository = app.capsuleRepository
+    private val authRepository = app.authRepository
+
+    val currentUser = authRepository.currentUser
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, authRepository.currentUserSnapshot())
+
+    private val _authFeedback = MutableStateFlow<String?>(null)
+    val authFeedback: StateFlow<String?> = _authFeedback.asStateFlow()
+
+    private val _isAuthLoading = MutableStateFlow(false)
+    val isAuthLoading: StateFlow<Boolean> = _isAuthLoading.asStateFlow()
+
+    fun signUp(email: String, password: String) {
+        if (email.isBlank() || password.isBlank()) {
+            _authFeedback.value = "Preenche e-mail e senha."
+            return
+        }
+        _isAuthLoading.value = true
+        viewModelScope.launch {
+            when (val result = authRepository.signUp(email, password)) {
+                is AuthResult.Success -> _authFeedback.value = "Conta criada — já estás autenticado."
+                is AuthResult.Error -> _authFeedback.value = result.message
+            }
+            _isAuthLoading.value = false
+        }
+    }
+
+    fun signIn(email: String, password: String) {
+        if (email.isBlank() || password.isBlank()) {
+            _authFeedback.value = "Preenche e-mail e senha."
+            return
+        }
+        _isAuthLoading.value = true
+        viewModelScope.launch {
+            when (val result = authRepository.signIn(email, password)) {
+                is AuthResult.Success -> _authFeedback.value = "Login feito com sucesso."
+                is AuthResult.Error -> _authFeedback.value = result.message
+            }
+            _isAuthLoading.value = false
+        }
+    }
+
+    fun signOut() {
+        authRepository.signOut()
+        _authFeedback.value = null
+    }
+
+    fun clearAuthFeedback() {
+        _authFeedback.value = null
+    }
     private val locationRepository = LocationRepository(application)
     private val sensorRepository = SensorRepository(application)
 

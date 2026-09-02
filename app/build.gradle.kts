@@ -3,6 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
     id("org.jetbrains.kotlin.plugin.serialization")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -13,8 +14,8 @@ android {
         applicationId = "com.gigawalljfl.geolock"
         minSdk = 26
         targetSdk = 34
-        versionCode = 8
-        versionName = "1.7.0"
+        versionCode = 9
+        versionName = "1.8.0"
     }
 
     buildTypes {
@@ -72,6 +73,10 @@ dependencies {
 
     // Leitura de orientação EXIF antes de recomprimir a imagem
     implementation("androidx.exifinterface:exifinterface:1.3.7")
+
+    // Firebase Auth — login/criação de conta pra sincronizar progresso entre aparelhos
+    implementation(platform("com.google.firebase:firebase-bom:33.5.1"))
+    implementation("com.google.firebase:firebase-auth-ktx")
 
     // Bloqueio do app por PIN/biometria
     implementation("androidx.biometric:biometric:1.1.0")
