@@ -186,6 +186,49 @@ fun SettingsScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
             Text(it, style = MaterialTheme.typography.labelSmall, color = MatrixGreen)
         }
 
+        Spacer(Modifier.height(20.dp))
+        Text("BACKUP NA NUVEM", style = MaterialTheme.typography.titleMedium, color = MatrixGreen)
+        if (currentUser == null) {
+            Text(
+                "Entra na tua conta acima pra usar isso — sincroniza cápsulas E imagens entre aparelhos, ao contrário do backup local.",
+                style = MaterialTheme.typography.labelSmall,
+                color = Magenta
+            )
+        } else {
+            Text(
+                "Mesma senha do backup local funciona aqui — mas essa versão leva as imagens junto, e fica guardada cifrada na tua conta.",
+                style = MaterialTheme.typography.labelSmall,
+                color = NeonCyan
+            )
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = {
+                    if (exportPassword.length < 6) {
+                        Toast.makeText(context, "Usa uma senha de pelo menos 6 caracteres", Toast.LENGTH_LONG).show()
+                    } else {
+                        viewModel.uploadBackupToCloud(exportPassword)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("☁️ ENVIAR BACKUP PRA NUVEM") }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = {
+                    if (importPassword.isBlank()) {
+                        Toast.makeText(context, "Digita a senha do backup", Toast.LENGTH_LONG).show()
+                    } else {
+                        viewModel.restoreBackupFromCloud(importPassword)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("☁️ RESTAURAR DA NUVEM") }
+            Text(
+                "Usa os campos de senha do backup local acima (exportar/restaurar).",
+                style = MaterialTheme.typography.labelSmall,
+                color = NeonCyan
+            )
+        }
+
         Spacer(Modifier.height(32.dp))
         Text("BLOQUEIO DO APP", style = MaterialTheme.typography.titleMedium, color = MatrixGreen)
         Spacer(Modifier.height(8.dp))

@@ -115,3 +115,33 @@ Limitação honesta: o ML Kit não vem com classificador embutido que diferencie
 ```bash
 mv ~/storage/downloads/google-services.json ~/GeoLock/app/google-services.json
 ```
+
+## Supabase Storage — sincronização de imagens e backup (v1.9.0)
+
+⚠️ **PRECISA DE MAIS CONFIGURAÇÃO ANTES DE COMPILAR** — ver passo a passo abaixo. Diferente do google-services.json, aqui o Gradle NÃO vai acusar erro — ele compila normal, só que as chamadas à nuvem vão falhar em runtime até os valores certos entrarem em `SupabaseConfig.kt`.
+
+- Chamadas REST diretas à API do Supabase Storage (`CloudStorageRepository`) — sem o SDK Kotlin Multiplatform oficial, que puxaria uma versão de Kotlin incompatível com o projeto.
+- Toda chamada é autorizada com o TOKEN DE IDENTIDADE DO FIREBASE — é a integração "Third-Party Auth" do Supabase que valida isso do lado do servidor, sem precisar de uma segunda conta.
+- Depois de selar uma cápsula com imagem, se estiver logado, a imagem JÁ CIFRADA (nunca a original) sobe pra nuvem em segundo plano — falha aqui nunca afeta o selamento local.
+- Nova seção "BACKUP NA NUVEM" em Configurações: mesma senha do backup local, mas essa versão leva as imagens junto (o backup local sozinho não leva).
+
+### Passo a passo Supabase
+
+**1. Console do Supabase** (supabase.com/dashboard, sem cartão):
+1. New Project → nomeia, define senha do banco (guarda em lugar seguro) → Create (leva ~2min).
+2. Menu lateral → Storage → New bucket → nome **exatamente** `geolock-vault` → **Private** → Save.
+3. Menu lateral → SQL Editor → New query → cola e roda:
+```sql
+create policy "cada usuario so acessa a propria pasta"
+on storage.objects for all
+using ( (storage.foldername(name))[1] = auth.uid()::text )
+with check ( (storage.foldername(name))[1] = auth.uid()::text );
+```
+4. Menu lateral → Authentication → Sign In / Providers → Third-Party Auth → Add integration → Firebase → cola o **Project ID** do Firebase (Firebase Console → engrenagem → Project Settings → aba General → campo "Project ID").
+5. Menu lateral → Project Settings → API → copia **Project URL** e a chave **anon / public**.
+
+**2. No código**, edita `app/src/main/java/com/gigawalljfl/geolock/cloud/CloudStorageRepository.kt` e substitui:
+```kotlin
+const val SUPABASE_URL = "https://SUBSTITUA-AQUI.supabase.co"       // → tua Project URL
+const val SUPABASE_ANON_KEY = "SUBSTITUA_PELA_ANON_KEY_AQUI"        // → tua anon/public key
+```

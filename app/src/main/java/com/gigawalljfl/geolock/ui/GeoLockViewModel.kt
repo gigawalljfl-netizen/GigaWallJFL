@@ -15,6 +15,7 @@ import com.gigawalljfl.geolock.GeoLockApp
 import com.gigawalljfl.geolock.auth.AuthRepository
 import com.gigawalljfl.geolock.auth.AuthResult
 import com.gigawalljfl.geolock.backup.BackupManager
+import com.gigawalljfl.geolock.cloud.CloudStorageRepository
 import com.gigawalljfl.geolock.data.db.Difficulty
 import com.gigawalljfl.geolock.data.db.EarnedMedal
 import com.gigawalljfl.geolock.data.db.EnvironmentalLock
@@ -60,6 +61,7 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
     private val app = application as GeoLockApp
     private val capsuleRepository = app.capsuleRepository
     private val authRepository = app.authRepository
+    private val cloudStorageRepository = app.cloudStorageRepository
 
     val currentUser = authRepository.currentUser
         .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, authRepository.currentUserSnapshot())
@@ -262,7 +264,7 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
             }
             val sealPressure = readPressureOnce()
             _sealState.value = SealState.Saving
-            capsuleRepository.sealCapsule(
+            val created = capsuleRepository.sealCapsule(
                 title = title,
                 hint = hint,
                 secretMessage = secretMessage,
@@ -279,6 +281,26 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
                 attachmentMimeType = attachment?.mimeType
             )
             _sealState.value = SealState.Success
+
+            // Se estiver logado, sobe a imagem JÁ CIFRADA (nunca a original em
+            // texto claro) pra nuvem em segundo plano — falha aqui nunca afeta
+            // o selamento local, que já está garantido no passo acima.
+            created.encryptedMediaPath?.let { path ->
+                uploadEncryptedAttachmentToCloud(created.id, path)
+            }
+        }
+    }
+
+    private fun uploadEncryptedAttachmentToCloud(capsuleId: String, localEncryptedPath: String) {
+        val uid = authRepository.currentUserSnapshot()?.uid ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val token = authRepository.getIdToken() ?: return@launch
+            val encryptedBytes = try {
+                File(localEncryptedPath).readBytes()
+            } catch (e: Exception) {
+                return@launch
+            }
+            cloudStorageRepository.upload("$uid/images/$capsuleId.enc", encryptedBytes, "application/octet-stream", token)
         }
     }
 
@@ -435,6 +457,76 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
 
     fun clearBackupFeedback() {
         _backupFeedback.value = null
+    }
+
+    /** Envia o backup cifrado por senha pro Supabase (exige login) em vez de salvar localmente. */
+    fun uploadBackupToCloud(passphrase: String) {
+        val uid = authRepository.currentUserSnapshot()?.uid
+        if (uid == null) {
+            _backupFeedback.value = "Entra na tua conta primeiro."
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val token = authRepository.getIdToken()
+            if (token == null) {
+                _backupFeedback.value = "Sessão expirada — entra de novo."
+                return@launch
+            }
+            try {
+                val bytes = BackupManager.export(capsules.value, passphrase)
+                val success = cloudStorageRepository.upload("$uid/backup.glbk", bytes, "application/octet-stream", token)
+                _backupFeedback.value = if (success) "Backup enviado pra nuvem com sucesso." else "Não foi possível enviar — confere a conexão."
+            } catch (e: Exception) {
+                _backupFeedback.value = "Erro ao gerar backup — tenta de novo."
+            }
+        }
+    }
+
+    /**
+     * Baixa o backup do Supabase, decifra com a senha, restaura as cápsulas
+     * e — pra cada uma que tinha imagem — baixa também a imagem cifrada
+     * correspondente e a religa localmente (o caminho antigo, de outro
+     * aparelho, não existe mais aqui).
+     */
+    fun restoreBackupFromCloud(passphrase: String) {
+        val uid = authRepository.currentUserSnapshot()?.uid
+        if (uid == null) {
+            _backupFeedback.value = "Entra na tua conta primeiro."
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val token = authRepository.getIdToken()
+            if (token == null) {
+                _backupFeedback.value = "Sessão expirada — entra de novo."
+                return@launch
+            }
+            val backupBytes = cloudStorageRepository.download("$uid/backup.glbk", token)
+            if (backupBytes == null) {
+                _backupFeedback.value = "Nenhum backup encontrado na nuvem pra essa conta."
+                return@launch
+            }
+            val restored = BackupManager.import(backupBytes, passphrase)
+            if (restored == null) {
+                _backupFeedback.value = "Senha incorreta ou backup corrompido."
+                return@launch
+            }
+
+            var imagesRestored = 0
+            restored.forEach { capsule ->
+                var toInsert = capsule
+                if (capsule.attachmentFileName != null) {
+                    val imageBytes = cloudStorageRepository.download("$uid/images/${capsule.id}.enc", token)
+                    if (imageBytes != null) {
+                        val localFile = File(getApplication<Application>().filesDir, "capsule_${capsule.id}.attachment.enc")
+                        localFile.writeBytes(imageBytes)
+                        toInsert = capsule.copy(encryptedMediaPath = localFile.absolutePath)
+                        imagesRestored++
+                    }
+                }
+                capsuleRepository.restoreCapsule(toInsert)
+            }
+            _backupFeedback.value = "${restored.size} cápsula(s) restaurada(s), $imagesRestored imagem(ns) recuperada(s)."
+        }
     }
 
     fun clearSaveFeedback() {

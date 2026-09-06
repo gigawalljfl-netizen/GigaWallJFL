@@ -14,8 +14,8 @@ android {
         applicationId = "com.gigawalljfl.geolock"
         minSdk = 26
         targetSdk = 34
-        versionCode = 9
-        versionName = "1.8.0"
+        versionCode = 11
+        versionName = "1.9.1"
     }
 
     buildTypes {
@@ -77,6 +77,10 @@ dependencies {
     // Firebase Auth — login/criação de conta pra sincronizar progresso entre aparelhos
     implementation(platform("com.google.firebase:firebase-bom:33.5.1"))
     implementation("com.google.firebase:firebase-auth-ktx")
+
+    // Chamadas REST diretas ao Supabase Storage — sem o SDK Kotlin Multiplatform
+    // oficial, que exigiria subir a versão do Kotlin do projeto inteiro
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Bloqueio do app por PIN/biometria
     implementation("androidx.biometric:biometric:1.1.0")
