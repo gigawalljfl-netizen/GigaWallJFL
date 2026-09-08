@@ -29,6 +29,7 @@ import com.gigawalljfl.geolock.location.LocationRepository
 import com.gigawalljfl.geolock.media.ImageCompressor
 import com.gigawalljfl.geolock.qr.CapsuleQrCodec
 import com.gigawalljfl.geolock.sensors.SensorRepository
+import com.gigawalljfl.geolock.util.SecureBackupPassphraseStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -288,6 +289,71 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
             created.encryptedMediaPath?.let { path ->
                 uploadEncryptedAttachmentToCloud(created.id, path)
             }
+
+            // Se houver senha de backup salva (ver SecureBackupPassphraseStore),
+            // sincroniza a coleção inteira sozinho — sem isso, "recuperar todo
+            // o progresso" dependia de lembrar de tocar num botão manualmente.
+            autoSyncBackupIfEnabled()
+        }
+    }
+
+    /** Sobe o backup completo pra nuvem automaticamente, usando a senha salva no Keystore — silencioso, sem travar nada se falhar. */
+    private fun autoSyncBackupIfEnabled() {
+        val uid = authRepository.currentUserSnapshot()?.uid ?: return
+        val context = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            // A leitura do Keystore precisa estar AQUI DENTRO, depois do
+            // Dispatchers.IO — rodar isso direto na thread principal (como
+            // estava antes) trava a interface e o Android mata o app (ANR).
+            val passphrase = SecureBackupPassphraseStore.load(context) ?: return@launch
+            val token = authRepository.getIdToken() ?: return@launch
+            try {
+                val bytes = BackupManager.export(capsules.value, passphrase)
+                cloudStorageRepository.upload("$uid/backup.glbk", bytes, "application/octet-stream", token)
+            } catch (e: Exception) {
+                // Sincronização automática silenciosa — falha aqui não deve
+                // incomodar quem só quer selar uma cápsula. O botão manual em
+                // Configurações continua disponível como reforço.
+            }
+        }
+    }
+
+    private val _autoSyncEnabled = MutableStateFlow(false)
+    val autoSyncEnabled: StateFlow<Boolean> = _autoSyncEnabled.asStateFlow()
+
+    fun refreshAutoSyncStatus() {
+        val context = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            val enabled = SecureBackupPassphraseStore.hasSavedPassphrase(context)
+            _autoSyncEnabled.value = enabled
+        }
+    }
+
+    /** Salva a senha cifrada no Keystore e liga a sincronização automática — dispara um envio imediato de conferência. */
+    fun enableAutoSync(passphrase: String) {
+        if (passphrase.length < 6) {
+            _backupFeedback.value = "Usa uma senha de pelo menos 6 caracteres."
+            return
+        }
+        val context = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            val success = SecureBackupPassphraseStore.save(context, passphrase)
+            if (success) {
+                _autoSyncEnabled.value = true
+                _backupFeedback.value = "Sincronização automática ativada."
+                autoSyncBackupIfEnabled()
+            } else {
+                _backupFeedback.value = "Não foi possível ativar — o aparelho recusou guardar a senha cifrada."
+            }
+        }
+    }
+
+    fun disableAutoSync() {
+        val context = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            SecureBackupPassphraseStore.clear(context)
+            _autoSyncEnabled.value = false
+            _backupFeedback.value = "Sincronização automática desativada."
         }
     }
 

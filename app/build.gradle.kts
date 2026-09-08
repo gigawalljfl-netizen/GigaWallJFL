@@ -14,8 +14,8 @@ android {
         applicationId = "com.gigawalljfl.geolock"
         minSdk = 26
         targetSdk = 34
-        versionCode = 11
-        versionName = "1.9.1"
+        versionCode = 13
+        versionName = "2.0.1"
     }
 
     buildTypes {

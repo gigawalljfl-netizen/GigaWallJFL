@@ -49,6 +49,7 @@ fun SettingsScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
     var importPassword by remember { mutableStateOf("") }
     var appLockEnabled by remember { mutableStateOf(AppPreferences.isAppLockEnabled(context)) }
     val backupFeedback by viewModel.backupFeedback.collectAsState()
+    val autoSyncEnabled by viewModel.autoSyncEnabled.collectAsState()
 
     val currentUser by viewModel.currentUser.collectAsState()
     val authFeedback by viewModel.authFeedback.collectAsState()
@@ -56,6 +57,10 @@ fun SettingsScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
     var authEmail by remember { mutableStateOf("") }
     var authPassword by remember { mutableStateOf("") }
     var isSignUpMode by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        viewModel.refreshAutoSyncStatus()
+    }
 
     LaunchedEffect(authFeedback) {
         authFeedback?.let {
@@ -226,6 +231,35 @@ fun SettingsScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
                 "Usa os campos de senha do backup local acima (exportar/restaurar).",
                 style = MaterialTheme.typography.labelSmall,
                 color = NeonCyan
+            )
+
+            Spacer(Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Sincronizar sozinho após cada cápsula", style = MaterialTheme.typography.bodyMedium, color = NeonCyan)
+                Switch(
+                    checked = autoSyncEnabled,
+                    onCheckedChange = { wantsEnabled ->
+                        if (wantsEnabled) {
+                            if (exportPassword.length < 6) {
+                                Toast.makeText(context, "Digita a senha do backup no campo acima primeiro (mín. 6 caracteres)", Toast.LENGTH_LONG).show()
+                            } else {
+                                viewModel.enableAutoSync(exportPassword)
+                            }
+                        } else {
+                            viewModel.disableAutoSync()
+                        }
+                    },
+                    colors = SwitchDefaults.colors(checkedTrackColor = MatrixGreen)
+                )
+            }
+            Text(
+                "Sem isso, o backup na nuvem só atualiza quando tocares em \"Enviar\" manualmente — cápsulas seladas depois ficam de fora até o próximo envio. Ligando, a senha fica cifrada no aparelho (Android Keystore) pra poder sincronizar sozinho.",
+                style = MaterialTheme.typography.labelSmall,
+                color = Magenta
             )
         }
 

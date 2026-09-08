@@ -145,3 +145,16 @@ with check ( (storage.foldername(name))[1] = auth.uid()::text );
 const val SUPABASE_URL = "https://SUBSTITUA-AQUI.supabase.co"       // → tua Project URL
 const val SUPABASE_ANON_KEY = "SUBSTITUA_PELA_ANON_KEY_AQUI"        // → tua anon/public key
 ```
+
+## Sincronização automática do backup (v2.0.0)
+
+- Novo toggle em Configurações → Backup na Nuvem: "Sincronizar sozinho após cada cápsula". Ligado, o app sobe o backup completo pra nuvem automaticamente depois de cada cápsula selada — sem precisar lembrar de tocar em "Enviar backup".
+- `SecureBackupPassphraseStore` — guarda a senha de backup cifrada via Android Keystore (chave que nunca sai do hardware), NÃO via `EncryptedSharedPreferences` (a própria Google marcou essa classe como obsoleta em 2025). Zero dependências novas.
+- Troca de segurança sendo dita com honestidade: antes, a senha de backup só existia na cabeça de quem a escolheu. Agora fica cifrada no aparelho — continua protegida contra quem rouba só o arquivo/bucket, mas não contra acesso root a um aparelho já desbloqueado.
+
+## Correção crítica: crash ao selar (v2.0.1)
+
+🐛 **Causa raiz**: o código de sincronização automática (v2.0.0) chamava o Android Keystore de forma síncrona e bloqueante DIRETO NA THREAD PRINCIPAL — tanto `autoSyncBackupIfEnabled()` (rodava dentro do `viewModelScope.launch` padrão de `sealCapsule`, que usa Main por default) quanto `enableAutoSync()` (chamado direto do `onCheckedChange` do Switch, sem nenhuma coroutine). Operações de Keystore, principalmente geração de chave, podem ser lentas o bastante pra travar a interface — o Android mata o app por ANR (App Not Responding), que aparece como "trava e sai sozinho".
+
+- Toda leitura/escrita no `SecureBackupPassphraseStore` agora roda dentro de `Dispatchers.IO`, nunca na thread principal.
+- `save()` agora blindado com try/catch e retorna `Boolean` de sucesso — antes podia lançar exceção sem rede de proteção nenhuma.
