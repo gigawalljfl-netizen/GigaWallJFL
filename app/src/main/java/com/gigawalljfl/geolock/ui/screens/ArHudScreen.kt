@@ -38,6 +38,7 @@ import com.gigawalljfl.geolock.radar.ObjectRadarAnalyzer
 import com.gigawalljfl.geolock.radar.RadarCategory
 import com.gigawalljfl.geolock.sensors.SensorRepository
 import com.gigawalljfl.geolock.ui.GeoLockViewModel
+import com.gigawalljfl.geolock.ui.components.SonarGridCanvas
 import com.gigawalljfl.geolock.ui.theme.MatrixGreen
 import com.gigawalljfl.geolock.ui.theme.Magenta
 import com.gigawalljfl.geolock.ui.theme.NeonCyan
@@ -123,6 +124,17 @@ fun ArHudScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
                 previewView
             },
             modifier = Modifier.fillMaxSize()
+        )
+
+        // Anéis sonar decorativos por cima da câmera — mesma linguagem
+        // visual do Radar tático, transparentes o bastante pra não
+        // atrapalhar a leitura da cena real.
+        SonarGridCanvas(
+            modifier = Modifier.fillMaxSize(),
+            ringColor = NeonCyan,
+            sweepColor = NeonCyan,
+            ringCount = 4,
+            sweepDurationMillis = 5000
         )
 
         // Overlay: mira holográfica alinhada ao azimute + rumo do alvo

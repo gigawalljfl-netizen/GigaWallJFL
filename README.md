@@ -158,3 +158,13 @@ const val SUPABASE_ANON_KEY = "SUBSTITUA_PELA_ANON_KEY_AQUI"        // → tua a
 
 - Toda leitura/escrita no `SecureBackupPassphraseStore` agora roda dentro de `Dispatchers.IO`, nunca na thread principal.
 - `save()` agora blindado com try/catch e retorna `Boolean` de sucesso — antes podia lançar exceção sem rede de proteção nenhuma.
+
+## Radar sonar imersivo (v2.1.0)
+
+- `SonarGridCanvas` novo (`ui/components/`) — anéis concêntricos, retículo, raios em 8 direções e feixe de varredura animado com rastro esmaecendo. Reutilizado nas duas telas de radar.
+- **Radar tático**: o topo da lista virou um radar circular de verdade — cada cápsula é um blip posicionado por rumo (relativo à bússola do aparelho — "pra cima" é sempre pra onde estás apontando agora) e distância (mais perto do centro = mais perto na vida real). Cor do blip: verde = desbloqueada, magenta = tua e travada, ciano = importada. Tocar num blip abre a cápsula direto. A lista completa continua embaixo, sem perder nada.
+- **HUD de AR**: os mesmos anéis sonar, semitransparentes, por cima do feed da câmera — mesma linguagem visual das duas telas, sem atrapalhar a leitura da cena real nem as caixas de deteção.
+- `LocationRepository.bearingDegrees()` novo — rumo inicial entre dois pontos, usado pra posicionar os blips no radar.
+
+## Modelo de deteção mais robusto (referência pra depois)
+Quando formos integrar: **EfficientDet-Lite0** (recomendação oficial do Google, Apache 2.0, treinado no COCO — cobre pessoa/carro/animal). Baixar a variante "metadata" em kaggle.com/models/tensorflow/efficientdet/tfLite/lite0-detection-metadata/1 (ou espelho em huggingface.co/litert-community/efficientdet), colocar em `app/src/main/assets/efficientdet-lite0.tflite`.

@@ -118,5 +118,16 @@ class LocationRepository(context: Context) {
             Location.distanceBetween(lat1, lon1, lat2, lon2, results)
             return results[0]
         }
+
+        /**
+         * Rumo (bearing) inicial de (lat1,lon1) até (lat2,lon2), em graus
+         * 0-360 a partir do norte verdadeiro — usado pra posicionar cada
+         * cápsula no ângulo certo do radar circular.
+         */
+        fun bearingDegrees(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Float {
+            val results = FloatArray(2)
+            Location.distanceBetween(lat1, lon1, lat2, lon2, results)
+            return (results[1] + 360f) % 360f
+        }
     }
 }
