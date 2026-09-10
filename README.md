@@ -168,3 +168,9 @@ const val SUPABASE_ANON_KEY = "SUBSTITUA_PELA_ANON_KEY_AQUI"        // → tua a
 
 ## Modelo de deteção mais robusto (referência pra depois)
 Quando formos integrar: **EfficientDet-Lite0** (recomendação oficial do Google, Apache 2.0, treinado no COCO — cobre pessoa/carro/animal). Baixar a variante "metadata" em kaggle.com/models/tensorflow/efficientdet/tfLite/lite0-detection-metadata/1 (ou espelho em huggingface.co/litert-community/efficientdet), colocar em `app/src/main/assets/efficientdet-lite0.tflite`.
+
+## Correção crítica: crash ao selar em aparelhos sem barômetro (v2.1.2)
+
+🐛 **Causa raiz, confirmada por log de crash real** (obrigado ao log do Termux/logcat — foi isso que tornou possível achar isso com certeza em vez de adivinhar): `readPressureOnce()` usava `observePressure().first()`. Em aparelhos SEM sensor de barômetro (comum em modelos de entrada, ex.: Itel L5006S), `observePressure()` fecha o fluxo de propósito sem emitir nada — e `first()` num fluxo que termina vazio lança `NoSuchElementException`, uma exceção que `withTimeoutOrNull` NÃO captura (ele só entende "estourou o tempo", não "terminou sem valor nenhum"). Resultado: crash garantido ao selar QUALQUER cápsula, em QUALQUER aparelho sem barômetro — a mesma leva que trouxe a fusão barômetro+GPS quebrou o selamento pra quem não tem o sensor.
+
+- Trocado `.first()` por `.firstOrNull()` — agora retorna null graciosamente nesse caso, e o app segue usando só GPS pro bloqueio ALTITUDE, como sempre foi o fallback pretendido.

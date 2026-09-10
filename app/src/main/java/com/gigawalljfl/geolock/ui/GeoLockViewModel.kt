@@ -35,7 +35,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -371,8 +371,18 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /** Colhe uma única leitura do barômetro (quando disponível), com timeout curto. */
+    /**
+     * Colhe uma única leitura do barômetro (quando disponível), com timeout
+     * curto. Usa firstOrNull() — não first() — de propósito: em aparelhos
+     * sem barômetro (comum em modelos de entrada), observePressure() fecha
+     * o fluxo imediatamente sem emitir nada, e first() lança
+     * NoSuchElementException nesse caso, uma exceção que o withTimeoutOrNull
+     * NÃO captura (só captura timeout, não "fluxo terminou vazio") —
+     * derrubava o app inteiro ao selar, em qualquer aparelho sem esse
+     * sensor.
+     */
     private suspend fun readPressureOnce(): Float? = withTimeoutOrNull(1200L) {
-        sensorRepository.observePressure().first()
+        sensorRepository.observePressure().firstOrNull()
     }
 
     fun resetSealState() {
