@@ -174,3 +174,10 @@ Quando formos integrar: **EfficientDet-Lite0** (recomendação oficial do Google
 🐛 **Causa raiz, confirmada por log de crash real** (obrigado ao log do Termux/logcat — foi isso que tornou possível achar isso com certeza em vez de adivinhar): `readPressureOnce()` usava `observePressure().first()`. Em aparelhos SEM sensor de barômetro (comum em modelos de entrada, ex.: Itel L5006S), `observePressure()` fecha o fluxo de propósito sem emitir nada — e `first()` num fluxo que termina vazio lança `NoSuchElementException`, uma exceção que `withTimeoutOrNull` NÃO captura (ele só entende "estourou o tempo", não "terminou sem valor nenhum"). Resultado: crash garantido ao selar QUALQUER cápsula, em QUALQUER aparelho sem barômetro — a mesma leva que trouxe a fusão barômetro+GPS quebrou o selamento pra quem não tem o sensor.
 
 - Trocado `.first()` por `.firstOrNull()` — agora retorna null graciosamente nesse caso, e o app segue usando só GPS pro bloqueio ALTITUDE, como sempre foi o fallback pretendido.
+
+## Independência do Google Play Services (v2.2.0)
+
+- `LocationRepository` reescrito para usar `android.location.LocationManager` (API nativa do Android) em vez de `FusedLocationProviderClient` (Google Play Services). Dependência `com.google.android.gms:play-services-location` removida do projeto.
+- Cada provedor disponível no aparelho (GPS, rede, etc.) é registrado separadamente — sem a "fusão" automática que o Google oferecia pronta, mas a média ponderada por precisão em `getAveragedFix()` já naturalmente prioriza a leitura mais confiável entre eles, então a qualidade final do fix não muda na prática.
+- Resultado: a função central do app (selar/desbloquear/mapa/radar, tudo que depende de localização) agora funciona em QUALQUER aparelho Android — inclusive Huawei pós-2019 e ROMs sem Google Play Services — não só nos que têm Play Services ativo.
+- Osmdroid (o mapa) já não dependia de Google Maps; ML Kit (radar de câmera) já vinha embutido no APK; Firebase Auth por e-mail/senha não usa Google Sign-In. Nenhum desses precisou de mudança.

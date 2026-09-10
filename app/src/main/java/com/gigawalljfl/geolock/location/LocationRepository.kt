@@ -3,12 +3,10 @@ package com.gigawalljfl.geolock.location
 import android.annotation.SuppressLint
 import android.content.Context
 import android.location.Location
-import com.google.android.gms.location.FusedLocationProviderClient
-import com.google.android.gms.location.LocationCallback
-import com.google.android.gms.location.LocationRequest
-import com.google.android.gms.location.LocationResult
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
+import android.location.LocationListener
+import android.location.LocationManager
+import android.os.Bundle
+import android.os.Looper
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -29,37 +27,70 @@ data class GeoFix(
     val timestampEpochMillis: Long
 )
 
-class LocationRepository(context: Context) {
+/**
+ * Usa o LocationManager NATIVO do Android — não o FusedLocationProviderClient
+ * do Google Play Services. Diferença que importa de verdade: o app inteiro
+ * passa a funcionar em qualquer aparelho Android, com ou sem Play Services
+ * instalado/ativo (aparelhos Huawei pós-2019, ROMs "de-Googled" como
+ * GrapheneOS/LineageOS sem microG, etc.) — o preço é não ter mais a "fusão"
+ * automática de GPS+rede que o Google oferecia pronta; aqui, cada provedor
+ * disponível no aparelho é registrado separadamente, e a própria média
+ * ponderada por precisão em getAveragedFix() já naturalmente prioriza
+ * a leitura mais precisa entre eles, sem precisar de lógica extra.
+ */
+class LocationRepository(private val context: Context) {
 
-    private val fusedClient: FusedLocationProviderClient =
-        LocationServices.getFusedLocationProviderClient(context)
+    private val locationManager: LocationManager =
+        context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
 
     @SuppressLint("MissingPermission")
     fun observeHighPrecisionFixes(intervalMillis: Long = 1000L): Flow<GeoFix> = callbackFlow {
-        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, intervalMillis)
-            .setMinUpdateIntervalMillis(intervalMillis / 2)
-            .build()
+        val listener = object : LocationListener {
+            override fun onLocationChanged(location: Location) {
+                trySend(location.toGeoFix())
+            }
+            // Deprecados desde a API 29, mas ainda fazem parte da interface
+            // em versões mais antigas — precisam de override mesmo vazios.
+            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+            override fun onProviderEnabled(provider: String) {}
+            override fun onProviderDisabled(provider: String) {}
+        }
 
-        val callback = object : LocationCallback() {
-            override fun onLocationResult(result: LocationResult) {
-                result.lastLocation?.let { loc ->
-                    trySend(
-                        GeoFix(
-                            latitude = loc.latitude,
-                            longitude = loc.longitude,
-                            altitudeMeters = loc.altitude,
-                            accuracyMeters = loc.accuracy,
-                            speedMps = loc.speed,
-                            timestampEpochMillis = loc.time
-                        )
-                    )
-                }
+        val enabledProviders = locationManager.getProviders(true)
+        for (provider in enabledProviders) {
+            try {
+                locationManager.requestLocationUpdates(provider, intervalMillis, 0f, listener, Looper.getMainLooper())
+            } catch (e: Exception) {
+                // Provedor indisponível nesse aparelho específico — segue pros outros
             }
         }
 
-        fusedClient.requestLocationUpdates(request, callback, null)
-        awaitClose { fusedClient.removeLocationUpdates(callback) }
+        // Aproveita a última posição conhecida (se recente) como ponto de
+        // partida imediato, em vez de esperar a primeira atualização nova —
+        // percebido como "GPS mais rápido" mesmo sendo só cache local.
+        for (provider in enabledProviders) {
+            try {
+                locationManager.getLastKnownLocation(provider)?.let { loc ->
+                    if (System.currentTimeMillis() - loc.time < LAST_KNOWN_MAX_AGE_MILLIS) {
+                        trySend(loc.toGeoFix())
+                    }
+                }
+            } catch (e: Exception) {
+                // ignora
+            }
+        }
+
+        awaitClose { locationManager.removeUpdates(listener) }
     }
+
+    private fun Location.toGeoFix() = GeoFix(
+        latitude = latitude,
+        longitude = longitude,
+        altitudeMeters = altitude,
+        accuracyMeters = if (hasAccuracy()) accuracy else 50f,
+        speedMps = if (hasSpeed()) speed else 0f,
+        timestampEpochMillis = time
+    )
 
     /**
      * Colhe várias leituras de GPS em sequência rápida e combina numa
@@ -97,6 +128,7 @@ class LocationRepository(context: Context) {
 
     companion object {
         private const val EARTH_RADIUS_METERS = 6371000.0
+        private const val LAST_KNOWN_MAX_AGE_MILLIS = 120_000L
 
         /**
          * Distância geodésica precisa (fórmula de Haversine, WGS84 aproximado)

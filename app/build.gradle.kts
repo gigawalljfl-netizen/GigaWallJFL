@@ -14,8 +14,8 @@ android {
         applicationId = "com.gigawalljfl.geolock"
         minSdk = 26
         targetSdk = 34
-        versionCode = 16
-        versionName = "2.1.2"
+        versionCode = 17
+        versionName = "2.2.0"
     }
 
     buildTypes {
@@ -67,9 +67,6 @@ dependencies {
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
-
-    // Location
-    implementation("com.google.android.gms:play-services-location:21.3.0")
 
     // Leitura de orientação EXIF antes de recomprimir a imagem
     implementation("androidx.exifinterface:exifinterface:1.3.7")
