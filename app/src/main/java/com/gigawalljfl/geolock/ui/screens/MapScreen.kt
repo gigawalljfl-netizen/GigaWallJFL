@@ -38,6 +38,7 @@ fun MapScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val density = context.resources.displayMetrics.density
     val capsules by viewModel.capsules.collectAsState()
     val fix by viewModel.currentFix.collectAsState()
 
@@ -81,7 +82,7 @@ fun MapScreen(
                 points = Polygon.pointsAsCircle(GeoPoint(f.latitude, f.longitude), f.accuracyMeters.toDouble())
                 fillColor = 0x330099FF
                 strokeColor = 0xFF0099FF.toInt()
-                strokeWidth = 2f
+                strokeWidth = 2f * density
             }
             mapView.overlays.add(0, circle)
             accuracyCircle = circle
@@ -111,7 +112,7 @@ fun MapScreen(
                 points = Polygon.pointsAsCircle(center, capsule.unlockRadiusMeters)
                 fillColor = (statusColorArgb and 0x00FFFFFF) or 0x22000000
                 strokeColor = statusColorArgb
-                strokeWidth = 2f
+                strokeWidth = 2f * density
             }
             mapView.overlays.add(radiusCircle)
             newCircles += radiusCircle

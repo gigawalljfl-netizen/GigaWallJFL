@@ -181,3 +181,13 @@ Quando formos integrar: **EfficientDet-Lite0** (recomendação oficial do Google
 - Cada provedor disponível no aparelho (GPS, rede, etc.) é registrado separadamente — sem a "fusão" automática que o Google oferecia pronta, mas a média ponderada por precisão em `getAveragedFix()` já naturalmente prioriza a leitura mais confiável entre eles, então a qualidade final do fix não muda na prática.
 - Resultado: a função central do app (selar/desbloquear/mapa/radar, tudo que depende de localização) agora funciona em QUALQUER aparelho Android — inclusive Huawei pós-2019 e ROMs sem Google Play Services — não só nos que têm Play Services ativo.
 - Osmdroid (o mapa) já não dependia de Google Maps; ML Kit (radar de câmera) já vinha embutido no APK; Firebase Auth por e-mail/senha não usa Google Sign-In. Nenhum desses precisou de mudança.
+
+## Suporte a telas de todos os tamanhos (v2.3.0)
+
+- **Correção de densidade**: vários elementos desenhados em `Canvas` (radar sonar, blips, HUD de AR) usavam pixel bruto fixo em vez de `dp`/`sp` — isso os fazia parecer gigantes em tela de baixa densidade e minúsculos em tela de alta densidade, o oposto de "adaptável". Todos convertidos pra escalar com a densidade real do aparelho: `SonarGridCanvas`, os blips do Radar tático, as caixas de deteção e o feixe do HUD de AR, e os círculos do Mapa.
+- **Alvo de toque**: o toque nos blips do radar estava em pixel fixo (48px reais, minúsculo em tela de alta densidade); agora é 48dp — o mínimo recomendado pela própria Android pra toque confiável, especialmente importante em tela pequena.
+- **Telas grandes (tablet)**: o radar circular e o QR Code de exportação agora têm largura máxima (420dp e 320dp) e ficam centralizados — sem isso, num tablet eles cresceriam sem limite até ficar absurdamente grandes e desproporcionais ao resto da tela.
+- **Telas pequenas**: `CapsuleDetailScreen` e `QrExportScreen` ganharam rolagem — antes, em tela pequena, conteúdo (principalmente a imagem desbloqueada) podia ficar cortado sem jeito de ver o resto.
+- Título da cápsula no Radar agora corta com reticências em vez de quebrar o layout numa tela estreita.
+
+Escopo consciente: orientação continua travada em retrato (portrait) — mudar isso exigiria testar cada tela em paisagem também, um projeto à parte. O manifesto não tem nenhuma restrição de `<supports-screens>`, então o Android já assume suporte a todos os tamanhos por padrão.

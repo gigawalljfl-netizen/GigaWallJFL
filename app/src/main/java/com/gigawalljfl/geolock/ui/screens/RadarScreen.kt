@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -47,7 +48,9 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.gigawalljfl.geolock.data.db.TimeCapsule
 import com.gigawalljfl.geolock.location.GpsQuality
 import com.gigawalljfl.geolock.location.LocationRepository
@@ -141,12 +144,14 @@ fun RadarScreen(
 
         Spacer(Modifier.height(12.dp))
 
-        SonarRadarVisual(
-            capsules = sortedCapsules,
-            fix = fix,
-            azimuth = azimuth,
-            onSelectCapsule = onOpenCapsule
-        )
+        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            SonarRadarVisual(
+                capsules = sortedCapsules,
+                fix = fix,
+                azimuth = azimuth,
+                onSelectCapsule = onOpenCapsule
+            )
+        }
 
         Spacer(Modifier.height(12.dp))
 
@@ -198,10 +203,12 @@ private fun SonarRadarVisual(
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .widthIn(max = 420.dp)
             .aspectRatio(1f)
             .background(PanelDark, RoundedCornerShape(999.dp))
             .border(1.dp, MatrixGreen.copy(alpha = 0.4f), RoundedCornerShape(999.dp))
             .pointerInput(capsules, fix, azimuth) {
+                val touchTargetPx = 48.dp.toPx()
                 detectTapGestures { tapOffset ->
                     val f = fix ?: return@detectTapGestures
                     val center = Offset(size.width / 2f, size.height / 2f)
@@ -214,7 +221,7 @@ private fun SonarRadarVisual(
                         val angleRad = Math.toRadians((relativeAngle - 90).toDouble())
                         val blipX = center.x + (maxRadius * radiusFraction * cos(angleRad)).toFloat()
                         val blipY = center.y + (maxRadius * radiusFraction * sin(angleRad)).toFloat()
-                        if ((tapOffset - Offset(blipX, blipY)).getDistance() < 48f) {
+                        if ((tapOffset - Offset(blipX, blipY)).getDistance() < touchTargetPx) {
                             onSelectCapsule(capsule.id)
                             break
                         }
@@ -233,6 +240,12 @@ private fun SonarRadarVisual(
             val maxRadius = size.minDimension / 2f * 0.92f
             val f = fix ?: return@Canvas
 
+            val blipRadiusPx = 4.dp.toPx()
+            val blipRingRadiusPx = 7.dp.toPx()
+            val blipStrokePx = 1.dp.toPx()
+            val labelTextSizePx = 11.sp.toPx()
+            val labelOffsetPx = 6.dp.toPx()
+
             capsules.forEach { capsule ->
                 val distance = LocationRepository.haversineMeters(capsule.sealLatitude, capsule.sealLongitude, f.latitude, f.longitude)
                 val bearing = LocationRepository.bearingDegrees(f.latitude, f.longitude, capsule.sealLatitude, capsule.sealLongitude)
@@ -248,15 +261,15 @@ private fun SonarRadarVisual(
                     else -> Magenta
                 }
 
-                drawCircle(color = blipColor, radius = 9f, center = Offset(blipX, blipY))
-                drawCircle(color = blipColor.copy(alpha = 0.35f), radius = 16f, center = Offset(blipX, blipY), style = Stroke(width = 2f))
+                drawCircle(color = blipColor, radius = blipRadiusPx, center = Offset(blipX, blipY))
+                drawCircle(color = blipColor.copy(alpha = 0.35f), radius = blipRingRadiusPx, center = Offset(blipX, blipY), style = Stroke(width = blipStrokePx))
                 drawContext.canvas.nativeCanvas.drawText(
                     capsule.title.take(10),
-                    blipX + 14f,
+                    blipX + labelOffsetPx,
                     blipY,
                     android.graphics.Paint().apply {
                         color = blipColor.toArgb()
-                        textSize = 24f
+                        textSize = labelTextSizePx
                     }
                 )
             }
@@ -293,7 +306,15 @@ private fun CapsuleCard(
     ) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(capsule.title, style = MaterialTheme.typography.bodyLarge, color = NeonCyan, fontWeight = FontWeight.Bold)
+                Text(
+                    capsule.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = NeonCyan,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
                 Spacer(Modifier.width(6.dp))
                 Text(
                     if (capsule.isOwnedByCreator) "🛡️ SUA" else "📥 IMPORTADA",

@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.gigawalljfl.geolock.haptics.ProximityFeedbackEngine
 import com.gigawalljfl.geolock.radar.DetectedTarget
@@ -152,6 +153,10 @@ fun ArHudScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
             // Caixas do radar de deteção — objetos/pessoas reais captados
             // pela câmera enquanto se busca o alvo real (a cápsula).
             Canvas(modifier = Modifier.fillMaxSize()) {
+                val boxStrokeWidth = 2.dp.toPx()
+                val labelTextSizePx = 13.sp.toPx()
+                val labelOffset = 6.dp.toPx()
+
                 detectedTargets.forEach { target ->
                     val boxColor = if (target.category == RadarCategory.PESSOA) Magenta else NeonCyan
                     val left = target.boxFraction.left * canvasWidth
@@ -163,15 +168,15 @@ fun ArHudScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
                         color = boxColor,
                         topLeft = Offset(left, top),
                         size = androidx.compose.ui.geometry.Size(right - left, bottom - top),
-                        style = Stroke(width = 3f)
+                        style = Stroke(width = boxStrokeWidth)
                     )
                     drawContext.canvas.nativeCanvas.drawText(
                         target.label,
                         left,
-                        (top - 8f).coerceAtLeast(20f),
+                        (top - labelOffset).coerceAtLeast(labelTextSizePx),
                         android.graphics.Paint().apply {
                             color = boxColor.toArgb()
-                            textSize = 28f
+                            textSize = labelTextSizePx
                             isFakeBoldText = true
                         }
                     )
@@ -188,9 +193,9 @@ fun ArHudScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
 
                 val ringColor = if (isLocked) MatrixGreen else NeonCyan
 
-                drawCircle(color = ringColor, radius = 60f, center = Offset(centerX, centerY), style = Stroke(width = 3f))
-                drawCircle(color = ringColor, radius = targetMarkerRadius(distanceMeters), center = Offset(targetX, targetY), style = Stroke(width = 5f))
-                drawLine(color = ringColor.copy(alpha = 0.5f), start = Offset(centerX, centerY), end = Offset(targetX, targetY), strokeWidth = 2f)
+                drawCircle(color = ringColor, radius = 22.dp.toPx(), center = Offset(centerX, centerY), style = Stroke(width = 1.5.dp.toPx()))
+                drawCircle(color = ringColor, radius = targetMarkerRadius(distanceMeters).toPx(), center = Offset(targetX, targetY), style = Stroke(width = 2.dp.toPx()))
+                drawLine(color = ringColor.copy(alpha = 0.5f), start = Offset(centerX, centerY), end = Offset(targetX, targetY), strokeWidth = 1.dp.toPx())
             }
         }
 
@@ -212,5 +217,5 @@ fun ArHudScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
     }
 }
 
-private fun targetMarkerRadius(distanceMeters: Float): Float =
-    (40f - (distanceMeters.coerceIn(0f, 50f) / 50f) * 25f)
+private fun targetMarkerRadius(distanceMeters: Float): androidx.compose.ui.unit.Dp =
+    (15f - (distanceMeters.coerceIn(0f, 50f) / 50f) * 9f).dp

@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.unit.dp
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -43,13 +44,18 @@ fun SonarGridCanvas(
     Canvas(modifier = modifier) {
         val center = Offset(size.width / 2f, size.height / 2f)
         val maxRadius = size.minDimension / 2f
+        val thinStrokePx = 1.dp.toPx()
+        val ringStrokePx = 1.2.dp.toPx()
+        val sweepTrailStrokePx = 1.2.dp.toPx()
+        val sweepMainStrokePx = 2.5.dp.toPx()
+        val centerDotRadiusPx = 3.dp.toPx()
 
         for (i in 1..ringCount) {
             drawCircle(
                 color = ringColor.copy(alpha = 0.35f),
                 radius = maxRadius * (i.toFloat() / ringCount),
                 center = center,
-                style = Stroke(width = 1.2f)
+                style = Stroke(width = ringStrokePx)
             )
         }
 
@@ -57,13 +63,13 @@ fun SonarGridCanvas(
             ringColor.copy(alpha = 0.25f),
             Offset(center.x - maxRadius, center.y),
             Offset(center.x + maxRadius, center.y),
-            strokeWidth = 1f
+            strokeWidth = thinStrokePx
         )
         drawLine(
             ringColor.copy(alpha = 0.25f),
             Offset(center.x, center.y - maxRadius),
             Offset(center.x, center.y + maxRadius),
-            strokeWidth = 1f
+            strokeWidth = thinStrokePx
         )
 
         for (angleDeg in 0 until 360 step 45) {
@@ -72,7 +78,7 @@ fun SonarGridCanvas(
                 center.x + (maxRadius * cos(rad)).toFloat(),
                 center.y + (maxRadius * sin(rad)).toFloat()
             )
-            drawLine(ringColor.copy(alpha = 0.18f), center, end, strokeWidth = 1f)
+            drawLine(ringColor.copy(alpha = 0.18f), center, end, strokeWidth = thinStrokePx)
         }
 
         // Feixe de varredura: várias linhas em leque com alfa decrescente,
@@ -86,9 +92,9 @@ fun SonarGridCanvas(
                 center.y + (maxRadius * sin(rad)).toFloat()
             )
             val alpha = (1f - t.toFloat() / trailSteps) * 0.5f
-            drawLine(sweepColor.copy(alpha = alpha), center, end, strokeWidth = if (t == 0) 2.5f else 1.2f)
+            drawLine(sweepColor.copy(alpha = alpha), center, end, strokeWidth = if (t == 0) sweepMainStrokePx else sweepTrailStrokePx)
         }
 
-        drawCircle(color = sweepColor, radius = 5f, center = center)
+        drawCircle(color = sweepColor, radius = centerDotRadiusPx, center = center)
     }
 }

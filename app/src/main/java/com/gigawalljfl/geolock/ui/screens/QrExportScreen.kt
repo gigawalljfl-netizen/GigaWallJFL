@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -31,7 +34,10 @@ fun QrExportScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
     val capsule = capsules.firstOrNull { it.id == selectedId }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("← VOLTAR", color = NeonCyan) }
@@ -53,7 +59,7 @@ fun QrExportScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
         Image(
             bitmap = bitmap.asImageBitmap(),
             contentDescription = "QR Code da cápsula ${capsule.title}",
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().widthIn(max = 320.dp)
         )
 
         Spacer(Modifier.height(16.dp))
