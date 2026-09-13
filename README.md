@@ -191,3 +191,27 @@ Quando formos integrar: **EfficientDet-Lite0** (recomendação oficial do Google
 - Título da cápsula no Radar agora corta com reticências em vez de quebrar o layout numa tela estreita.
 
 Escopo consciente: orientação continua travada em retrato (portrait) — mudar isso exigiria testar cada tela em paisagem também, um projeto à parte. O manifesto não tem nenhuma restrição de `<supports-screens>`, então o Android já assume suporte a todos os tamanhos por padrão.
+
+## Confiabilidade do rumo — correção séria (v2.4.0)
+
+Problema relatado: o rumo até a cápsula no radar/HUD não era confiável o bastante pra guiar alguém de volta a um local à distância, sem abrir o mapa. Causa raiz identificada: a bússola do telemóvel aponta pro **norte magnético**, mas o rumo calculado até a cápsula é em relação ao **norte verdadeiro** — sem corrigir essa diferença (declinação magnética), o erro pode passar de 15-20° dependendo da região, o que a 300m de distância é quase 90m de erro lateral.
+
+Solução — usa TUDO que o Android oferece, na ordem de confiabilidade:
+1. **Rumo de deslocamento do GPS** (`Location.bearing`) — quando o explorador está caminhando de verdade (velocidade ≥0.8 m/s), usa o rumo que o próprio GPS calcula a partir de posições reais. Zero interferência magnética possível.
+2. **Bússola corrigida por declinação magnética** (`GeomagneticField`, com cache por posição pra não pesar no processador) — usada só quando parado ou sem rumo de GPS disponível.
+3. **Suavização circular** da leitura da bússola — reduz a "tremida" natural do magnetômetro, tratando corretamente a virada 359°→1°.
+4. **Aviso de baixa precisão do sensor** — quando a bússola está descalibrada (perto de metal, eletrônicos), avisa e sugere o gesto de "mexer em forma de 8" pra recalibrar, em vez de mostrar silenciosamente um rumo em que não se pode confiar.
+5. **Transparência total**: Radar e HUD de AR agora mostram qual fonte de rumo está ativa agora (🛰️ GPS ou 🧭 bússola) — o mesmo princípio de nunca esconder incerteza que já usamos pro status de GPS.
+
+`GeoFix` ganhou o campo `bearingDegrees` (do próprio GPS). Novo `HeadingEstimator` centraliza toda essa lógica, usado tanto no Radar tático quanto no HUD de AR.
+
+## Aparelhos sem sensor de bússola (v2.4.1)
+
+Pergunta que expôs um buraco real: em aparelhos sem `TYPE_ROTATION_VECTOR` (sem magnetômetro), o azimute ficava travado no valor inicial (0°) pra sempre, e o app mostraria uma direção FIXA e ERRADA sem avisar — exatamente o tipo de coisa que este app nunca deveria fazer.
+
+Corrigido: `HeadingSource` ganhou um terceiro estado, `UNAVAILABLE`, usado quando não há bússola E o explorador não está caminhando rápido o bastante pro GPS calcular rumo. Nesse estado:
+- Radar tático: nenhum blip é desenhado em ângulo nenhum — mostra "⚠️ SEM RUMO — Anda alguns passos" no centro do círculo, em vez de posições inventadas.
+- HUD de AR: a mira direcional não é desenhada (só o círculo central neutro), e o retorno háptico de "travado no alvo" nunca dispara por engano.
+- Ambas as telas mostram a mensagem de status "⚠️ Sem bússola neste aparelho — anda alguns passos pra ativar o rumo por GPS".
+
+Resultado: aparelhos sem bússola funcionam perfeitamente enquanto o explorador estiver caminhando (rumo por GPS, que nunca precisou de bússola pra começo de conversa) — só fica sem informação de direção quando parado, e nesse caso o app admite isso claramente em vez de mentir.

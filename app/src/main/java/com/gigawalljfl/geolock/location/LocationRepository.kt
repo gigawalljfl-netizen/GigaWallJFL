@@ -24,7 +24,13 @@ data class GeoFix(
     val altitudeMeters: Double,
     val accuracyMeters: Float,
     val speedMps: Float,
-    val timestampEpochMillis: Long
+    val timestampEpochMillis: Long,
+    // Rumo de deslocamento calculado pelo próprio GPS (Doppler/posições
+    // sucessivas) — só disponível quando o aparelho está em movimento com
+    // velocidade suficiente. Ao contrário da bússola, não sofre NENHUMA
+    // interferência magnética — é o sinal mais confiável de direção que
+    // existe quando disponível.
+    val bearingDegrees: Float? = null
 )
 
 /**
@@ -89,7 +95,8 @@ class LocationRepository(private val context: Context) {
         altitudeMeters = altitude,
         accuracyMeters = if (hasAccuracy()) accuracy else 50f,
         speedMps = if (hasSpeed()) speed else 0f,
-        timestampEpochMillis = time
+        timestampEpochMillis = time,
+        bearingDegrees = if (hasBearing()) bearing else null
     )
 
     /**
@@ -122,7 +129,8 @@ class LocationRepository(private val context: Context) {
             altitudeMeters = alt,
             accuracyMeters = combinedAccuracy,
             speedMps = samples.last().speedMps,
-            timestampEpochMillis = System.currentTimeMillis()
+            timestampEpochMillis = System.currentTimeMillis(),
+            bearingDegrees = samples.last().bearingDegrees
         )
     }
 

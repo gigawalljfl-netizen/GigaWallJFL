@@ -35,7 +35,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -53,6 +52,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gigawalljfl.geolock.data.db.TimeCapsule
 import com.gigawalljfl.geolock.location.GpsQuality
+import com.gigawalljfl.geolock.location.HeadingEstimate
+import com.gigawalljfl.geolock.location.HeadingEstimator
+import com.gigawalljfl.geolock.location.HeadingSource
 import com.gigawalljfl.geolock.location.LocationRepository
 import com.gigawalljfl.geolock.sensors.SensorRepository
 import com.gigawalljfl.geolock.ui.GeoLockViewModel
@@ -83,10 +85,19 @@ fun RadarScreen(
     val gamification by viewModel.gamificationState.collectAsState()
 
     val sensorRepository = remember { SensorRepository(context) }
-    var azimuth by remember { mutableFloatStateOf(0f) }
+    var compassAzimuth by remember { mutableStateOf<Float?>(null) }
+    var compassAccuracy by remember { mutableStateOf(android.hardware.SensorManager.SENSOR_STATUS_UNRELIABLE) }
     LaunchedEffect(Unit) {
-        sensorRepository.observeAzimuth().collect { azimuth = it }
+        sensorRepository.observeAzimuth().collect { reading ->
+            compassAzimuth = reading.azimuthDegrees
+            compassAccuracy = reading.accuracy
+        }
     }
+
+    // Rumo mais confiável disponível agora: prioriza o deslocamento real
+    // do GPS quando caminhando (imune a interferência magnética), cai pra
+    // bússola corrigida por declinação só quando parado.
+    val heading = remember(fix, compassAzimuth) { HeadingEstimator.estimate(fix, compassAzimuth) }
 
     // Ordena pela distância real até o explorador — um radar de
     // verdade mostra o mais próximo primeiro, não o mais recente.
@@ -141,6 +152,19 @@ fun RadarScreen(
             style = MaterialTheme.typography.labelSmall,
             color = if (fix != null) GpsQuality.color(fix!!.accuracyMeters) else Magenta
         )
+        Text(
+            when (heading.source) {
+                HeadingSource.GPS_COURSE -> "🛰️ Rumo por GPS (mais confiável — caminhando)"
+                HeadingSource.COMPASS -> "🧭 Rumo por bússola" + if (compassAccuracy <= android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_LOW) " — baixa precisão, mexe o telemóvel em forma de 8" else ""
+                HeadingSource.UNAVAILABLE -> "⚠️ Sem bússola neste aparelho — anda alguns passos pra ativar o rumo por GPS"
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = when {
+                heading.source == HeadingSource.GPS_COURSE -> MatrixGreen
+                heading.source == HeadingSource.COMPASS && compassAccuracy > android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_LOW -> MatrixGreen
+                else -> Magenta
+            }
+        )
 
         Spacer(Modifier.height(12.dp))
 
@@ -148,7 +172,7 @@ fun RadarScreen(
             SonarRadarVisual(
                 capsules = sortedCapsules,
                 fix = fix,
-                azimuth = azimuth,
+                heading = heading,
                 onSelectCapsule = onOpenCapsule
             )
         }
@@ -187,7 +211,7 @@ fun RadarScreen(
 private fun SonarRadarVisual(
     capsules: List<TimeCapsule>,
     fix: com.gigawalljfl.geolock.location.GeoFix?,
-    azimuth: Float,
+    heading: HeadingEstimate,
     onSelectCapsule: (String) -> Unit
 ) {
     val maxRangeMeters = remember(capsules, fix) {
@@ -207,16 +231,17 @@ private fun SonarRadarVisual(
             .aspectRatio(1f)
             .background(PanelDark, RoundedCornerShape(999.dp))
             .border(1.dp, MatrixGreen.copy(alpha = 0.4f), RoundedCornerShape(999.dp))
-            .pointerInput(capsules, fix, azimuth) {
+            .pointerInput(capsules, fix, heading) {
                 val touchTargetPx = 48.dp.toPx()
                 detectTapGestures { tapOffset ->
                     val f = fix ?: return@detectTapGestures
+                    if (heading.source == HeadingSource.UNAVAILABLE) return@detectTapGestures
                     val center = Offset(size.width / 2f, size.height / 2f)
                     val maxRadius = minOf(size.width, size.height) / 2f * 0.92f
                     for (capsule in capsules) {
                         val distance = LocationRepository.haversineMeters(capsule.sealLatitude, capsule.sealLongitude, f.latitude, f.longitude)
                         val bearing = LocationRepository.bearingDegrees(f.latitude, f.longitude, capsule.sealLatitude, capsule.sealLongitude)
-                        val relativeAngle = (bearing - azimuth + 360f) % 360f
+                        val relativeAngle = (bearing - heading.degrees + 360f) % 360f
                         val radiusFraction = (distance / maxRangeMeters).coerceIn(0.08, 1.0)
                         val angleRad = Math.toRadians((relativeAngle - 90).toDouble())
                         val blipX = center.x + (maxRadius * radiusFraction * cos(angleRad)).toFloat()
@@ -239,6 +264,7 @@ private fun SonarRadarVisual(
             val center = Offset(size.width / 2f, size.height / 2f)
             val maxRadius = size.minDimension / 2f * 0.92f
             val f = fix ?: return@Canvas
+            if (heading.source == HeadingSource.UNAVAILABLE) return@Canvas
 
             val blipRadiusPx = 4.dp.toPx()
             val blipRingRadiusPx = 7.dp.toPx()
@@ -249,7 +275,7 @@ private fun SonarRadarVisual(
             capsules.forEach { capsule ->
                 val distance = LocationRepository.haversineMeters(capsule.sealLatitude, capsule.sealLongitude, f.latitude, f.longitude)
                 val bearing = LocationRepository.bearingDegrees(f.latitude, f.longitude, capsule.sealLatitude, capsule.sealLongitude)
-                val relativeAngle = (bearing - azimuth + 360f) % 360f
+                val relativeAngle = (bearing - heading.degrees + 360f) % 360f
                 val radiusFraction = (distance / maxRangeMeters).coerceIn(0.08, 1.0)
                 val angleRad = Math.toRadians((relativeAngle - 90).toDouble())
                 val blipX = center.x + (maxRadius * radiusFraction * cos(angleRad)).toFloat()
@@ -279,6 +305,13 @@ private fun SonarRadarVisual(
             Text(
                 "AGUARDANDO GPS…",
                 color = Magenta,
+                modifier = Modifier.align(Alignment.Center)
+            )
+        } else if (heading.source == HeadingSource.UNAVAILABLE) {
+            Text(
+                "⚠️ SEM RUMO\nAnda alguns passos",
+                color = Magenta,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 modifier = Modifier.align(Alignment.Center)
             )
         }

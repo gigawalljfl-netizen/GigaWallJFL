@@ -34,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.gigawalljfl.geolock.haptics.ProximityFeedbackEngine
+import com.gigawalljfl.geolock.location.HeadingEstimator
+import com.gigawalljfl.geolock.location.HeadingSource
 import com.gigawalljfl.geolock.radar.DetectedTarget
 import com.gigawalljfl.geolock.radar.ObjectRadarAnalyzer
 import com.gigawalljfl.geolock.radar.RadarCategory
@@ -59,7 +61,8 @@ fun ArHudScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
     val sensorRepository = remember { SensorRepository(context) }
     val feedbackEngine = remember { ProximityFeedbackEngine(context) }
 
-    var azimuth by remember { mutableFloatStateOf(0f) }
+    var azimuth by remember { mutableStateOf<Float?>(null) }
+    var compassAccuracy by remember { mutableStateOf(android.hardware.SensorManager.SENSOR_STATUS_UNRELIABLE) }
     var bearingToTarget by remember { mutableFloatStateOf(0f) }
     var distanceMeters by remember { mutableFloatStateOf(9999f) }
     var detectedTargets by remember { mutableStateOf<List<DetectedTarget>>(emptyList()) }
@@ -71,12 +74,20 @@ fun ArHudScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
         onDispose { radarAnalyzer.release() }
     }
 
-    // Bússola em tempo real
+    // Bússola em tempo real — já suavizada, com precisão do sensor
     LaunchedEffect(Unit) {
         launch {
-            sensorRepository.observeAzimuth().collect { azimuth = it }
+            sensorRepository.observeAzimuth().collect { reading ->
+                azimuth = reading.azimuthDegrees
+                compassAccuracy = reading.accuracy
+            }
         }
     }
+
+    // Rumo mais confiável disponível: prioriza o deslocamento real do GPS
+    // quando caminhando (imune a interferência magnética), cai pra
+    // bússola corrigida por declinação magnética do local só quando parado.
+    val heading = remember(fix, azimuth) { HeadingEstimator.estimate(fix, azimuth) }
 
     // Distância + rumo (bearing) até a cápsula, atualizados a cada fix de GPS
     LaunchedEffect(fix, capsule) {
@@ -138,9 +149,9 @@ fun ArHudScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
             sweepDurationMillis = 5000
         )
 
-        // Overlay: mira holográfica alinhada ao azimute + rumo do alvo
-        val relativeBearing = (bearingToTarget - azimuth + 360f) % 360f
-        val isLocked = relativeBearing < 8f || relativeBearing > 352f
+        // Overlay: mira holográfica alinhada ao rumo mais confiável + rumo do alvo
+        val relativeBearing = (bearingToTarget - heading.degrees + 360f) % 360f
+        val isLocked = heading.source != HeadingSource.UNAVAILABLE && (relativeBearing < 8f || relativeBearing > 352f)
 
         LaunchedEffect(isLocked) {
             if (isLocked) feedbackEngine.azimuthLockPulse()
@@ -186,16 +197,21 @@ fun ArHudScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val centerX = size.width / 2f
                 val centerY = size.height / 2f
-                val angleRad = Math.toRadians((relativeBearing - 90).toDouble())
-                val radius = size.minDimension / 3f
-                val targetX = centerX + (radius * kotlin.math.cos(angleRad)).toFloat()
-                val targetY = centerY + (radius * kotlin.math.sin(angleRad)).toFloat()
-
                 val ringColor = if (isLocked) MatrixGreen else NeonCyan
 
                 drawCircle(color = ringColor, radius = 22.dp.toPx(), center = Offset(centerX, centerY), style = Stroke(width = 1.5.dp.toPx()))
-                drawCircle(color = ringColor, radius = targetMarkerRadius(distanceMeters).toPx(), center = Offset(targetX, targetY), style = Stroke(width = 2.dp.toPx()))
-                drawLine(color = ringColor.copy(alpha = 0.5f), start = Offset(centerX, centerY), end = Offset(targetX, targetY), strokeWidth = 1.dp.toPx())
+
+                // Sem rumo confiável (aparelho sem bússola e parado), não
+                // desenha a mira em ângulo nenhum — apontar pra qualquer
+                // lugar seria pior que não apontar pra lugar nenhum.
+                if (heading.source != HeadingSource.UNAVAILABLE) {
+                    val angleRad = Math.toRadians((relativeBearing - 90).toDouble())
+                    val radius = size.minDimension / 3f
+                    val targetX = centerX + (radius * kotlin.math.cos(angleRad)).toFloat()
+                    val targetY = centerY + (radius * kotlin.math.sin(angleRad)).toFloat()
+                    drawCircle(color = ringColor, radius = targetMarkerRadius(distanceMeters).toPx(), center = Offset(targetX, targetY), style = Stroke(width = 2.dp.toPx()))
+                    drawLine(color = ringColor.copy(alpha = 0.5f), start = Offset(centerX, centerY), end = Offset(targetX, targetY), strokeWidth = 1.dp.toPx())
+                }
             }
         }
 
@@ -212,7 +228,18 @@ fun ArHudScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
         Text(
             text = "${capsule?.title ?: "—"}   DIST: ${distanceMeters.roundToInt()}m   RUMO: ${bearingToTarget.roundToInt()}°",
             color = if (isLocked) MatrixGreen else NeonCyan,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp)
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 48.dp)
+        )
+        Text(
+            text = when (heading.source) {
+                HeadingSource.GPS_COURSE -> "🛰️ rumo por GPS — mais confiável, caminhando"
+                HeadingSource.COMPASS -> if (compassAccuracy <= android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_LOW)
+                    "🧭 bússola com baixa precisão — mexe o telemóvel em forma de 8"
+                else "🧭 rumo por bússola"
+                HeadingSource.UNAVAILABLE -> "⚠️ sem bússola neste aparelho — anda alguns passos pra ativar rumo por GPS"
+            },
+            color = if (heading.source == HeadingSource.GPS_COURSE || (heading.source == HeadingSource.COMPASS && compassAccuracy > android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_LOW)) MatrixGreen else Magenta,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)
         )
     }
 }
