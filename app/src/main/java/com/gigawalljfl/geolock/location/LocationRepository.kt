@@ -10,7 +10,7 @@ import android.os.Looper
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.atan2
@@ -100,22 +100,63 @@ class LocationRepository(private val context: Context) {
     )
 
     /**
-     * Colhe várias leituras de GPS em sequência rápida e combina numa
-     * única posição por MÉDIA PONDERADA PELA VARIÂNCIA INVERSA (padrão
-     * em fusão de sensores: leituras com melhor precisão pesam mais).
-     * Usado no momento de SELAR uma cápsula e no momento de TENTAR
-     * DESBLOQUEAR — uma única leitura isolada pode estar ruidosa o
-     * bastante pra colocar o ponto alguns metros fora do lugar, o que
-     * importa muito quando o raio de desbloqueio pode ser de só 1.5m.
+     * Colhe leituras de GPS e combina numa única posição por MÉDIA
+     * PONDERADA PELA VARIÂNCIA INVERSA — mas, diferente de antes, não para
+     * num número fixo de amostras: continua colhendo até atingir uma
+     * precisão-alvo (ou o teto de tempo/amostras), e rejeita leituras
+     * isoladas muito fora do grupo (outliers) antes de calcular a média.
+     *
+     * LIMITE HONESTO: isto reduz o RUÍDO aleatório do receptor GPS, que é
+     * boa parte do erro típico. Só que perto de prédios/estruturas, uma
+     * fatia do erro é SISTEMÁTICA (multipath — o sinal ricocheteia antes
+     * de chegar no aparelho), e isso NÃO desaparece com mais amostras
+     * coletadas em poucos segundos, porque a geometria dos satélites mal
+     * muda nesse intervalo. Não existe app que resolva isso sozinho sem
+     * hardware de GPS diferencial — o que dá pra fazer, e este código faz,
+     * é tirar o máximo proveito possível do sinal disponível.
      */
     @SuppressLint("MissingPermission")
-    suspend fun getAveragedFix(sampleCount: Int = 5, maxWaitMillis: Long = 6000L): GeoFix? {
-        val samples = withTimeoutOrNull(maxWaitMillis) {
-            observeHighPrecisionFixes(intervalMillis = 400L).take(sampleCount).toList()
+    suspend fun getAveragedFix(
+        minSamples: Int = 6,
+        maxSamples: Int = 20,
+        maxWaitMillis: Long = 12000L,
+        targetAccuracyMeters: Float = 8f,
+        onProgress: ((sampleCount: Int, bestAccuracySoFar: Float) -> Unit)? = null
+    ): GeoFix? {
+        val collected = mutableListOf<GeoFix>()
+        withTimeoutOrNull(maxWaitMillis) {
+            observeHighPrecisionFixes(intervalMillis = 400L)
+                .transformWhile { fix ->
+                    collected += fix
+                    emit(fix)
+                    onProgress?.invoke(collected.size, collected.minOf { it.accuracyMeters })
+                    val reachedTarget = collected.size >= minSamples &&
+                        combinedAccuracyEstimate(collected) <= targetAccuracyMeters
+                    collected.size < maxSamples && !reachedTarget
+                }
+                .toList()
         }
-        if (samples.isNullOrEmpty()) return null
-        if (samples.size == 1) return samples.first()
+        if (collected.isEmpty()) return null
+        if (collected.size == 1) return collected.first()
 
+        return combineWeighted(rejectOutliers(collected))
+    }
+
+    /** Descarta leituras isoladas muito distantes do grupo — um salto espúrio não deveria pesar na média. */
+    private fun rejectOutliers(samples: List<GeoFix>): List<GeoFix> {
+        if (samples.size < 3) return samples
+        val sortedLats = samples.map { it.latitude }.sorted()
+        val sortedLons = samples.map { it.longitude }.sorted()
+        val medianLat = sortedLats[sortedLats.size / 2]
+        val medianLon = sortedLons[sortedLons.size / 2]
+        val filtered = samples.filter { s ->
+            haversineMeters(medianLat, medianLon, s.latitude, s.longitude) <= OUTLIER_REJECTION_METERS
+        }
+        // Nunca descarta tudo — se o filtro for exagerado demais, usa o grupo original
+        return if (filtered.size >= 2) filtered else samples
+    }
+
+    private fun combineWeighted(samples: List<GeoFix>): GeoFix {
         val weights = samples.map { 1.0 / (it.accuracyMeters.toDouble().coerceAtLeast(1.0).let { a -> a * a }) }
         val totalWeight = weights.sum()
         val lat = samples.indices.sumOf { i -> samples[i].latitude * weights[i] } / totalWeight
@@ -134,9 +175,15 @@ class LocationRepository(private val context: Context) {
         )
     }
 
+    private fun combinedAccuracyEstimate(samples: List<GeoFix>): Float {
+        val totalWeight = samples.sumOf { 1.0 / (it.accuracyMeters.toDouble().coerceAtLeast(1.0).let { a -> a * a }) }
+        return sqrt(1.0 / totalWeight).toFloat()
+    }
+
     companion object {
         private const val EARTH_RADIUS_METERS = 6371000.0
         private const val LAST_KNOWN_MAX_AGE_MILLIS = 120_000L
+        private const val OUTLIER_REJECTION_METERS = 25.0
 
         /**
          * Distância geodésica precisa (fórmula de Haversine, WGS84 aproximado)

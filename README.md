@@ -215,3 +215,21 @@ Corrigido: `HeadingSource` ganhou um terceiro estado, `UNAVAILABLE`, usado quand
 - Ambas as telas mostram a mensagem de status "⚠️ Sem bússola neste aparelho — anda alguns passos pra ativar o rumo por GPS".
 
 Resultado: aparelhos sem bússola funcionam perfeitamente enquanto o explorador estiver caminhando (rumo por GPS, que nunca precisou de bússola pra começo de conversa) — só fica sem informação de direção quando parado, e nesse caso o app admite isso claramente em vez de mentir.
+
+## Precisão de selamento + diagnóstico do backup na nuvem (v2.5.0)
+
+### Precisão de selamento
+Relato: cápsulas seladas a 3-10m do lugar real, ao ponto de cair em propriedade vizinha. Causa: a calibração antiga parava sempre em 5 amostras num teto de 6s, aceitando o que vier — perto de prédios, multipath (sinal ricocheteando antes de chegar no aparelho) causa erro SISTEMÁTICO que não desaparece só com mais amostras coletadas rapidamente.
+
+Mudanças em `LocationRepository.getAveragedFix()`:
+- Coleta agora até 20 amostras num teto de 12s (dobro do anterior), mas **para assim que atingir uma precisão-alvo de ±8m** — não espera à toa se o sinal já está bom.
+- **Rejeição de outliers**: descarta leituras isoladas a mais de 25m do grupo antes de calcular a média — um salto espúrio não pesa mais no resultado.
+- **Progresso ao vivo**: Selamento e Desbloqueio agora mostram quantas leituras já foram colhidas e a melhor precisão até agora, em vez de uma espera às cegas.
+- **Precisão gravada por cápsula**: `sealAccuracyMeters` novo em `TimeCapsule` — se o raio escolhido for menor que a precisão realmente alcançada, avisa por Toast no momento e mostra um aviso permanente na tela da cápsula depois.
+
+Limite honesto, documentado no código: isto reduz o ruído aleatório do GPS, boa parte do erro típico — mas erro sistemático por multipath perto de estruturas não desaparece por software sozinho, precisaria de GPS diferencial (hardware que nenhum telemóvel comum tem). O que dá pra fazer é tirar o máximo proveito do sinal disponível, e isso o código agora faz.
+
+### Backup na nuvem — diagnóstico
+Erros do Supabase estavam sendo engolidos em silêncio (`catch { false }`) — impossível saber se era rede, bucket errado, política de RLS rejeitando, ou token expirado. `CloudStorageRepository` agora retorna `CloudResult` com o motivo real (código HTTP + corpo da resposta do Supabase + uma dica específica pra cada código comum: 401/403/404). Upload/restauração manuais e automáticos mostram esse motivo exato em vez de "não está funcionando".
+
+Teste de novo e me manda a mensagem exata que aparecer — agora ela vai dizer o que está errado de verdade.

@@ -15,6 +15,7 @@ import com.gigawalljfl.geolock.GeoLockApp
 import com.gigawalljfl.geolock.auth.AuthRepository
 import com.gigawalljfl.geolock.auth.AuthResult
 import com.gigawalljfl.geolock.backup.BackupManager
+import com.gigawalljfl.geolock.cloud.CloudResult
 import com.gigawalljfl.geolock.cloud.CloudStorageRepository
 import com.gigawalljfl.geolock.data.db.Difficulty
 import com.gigawalljfl.geolock.data.db.EarnedMedal
@@ -56,6 +57,9 @@ sealed class SealState {
     object Success : SealState()
     object NoGpsFix : SealState()
 }
+
+/** Progresso ao vivo da calibração de GPS — mostrado enquanto colhe leituras, pra nunca parecer travado. */
+data class CalibrationProgress(val sampleCount: Int, val bestAccuracyMeters: Float)
 
 class GeoLockViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -137,6 +141,16 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
 
     private val _isCalibratingUnlock = MutableStateFlow(false)
     val isCalibratingUnlock: StateFlow<Boolean> = _isCalibratingUnlock.asStateFlow()
+
+    private val _calibrationProgress = MutableStateFlow<CalibrationProgress?>(null)
+    val calibrationProgress: StateFlow<CalibrationProgress?> = _calibrationProgress.asStateFlow()
+
+    private val _sealWarning = MutableStateFlow<String?>(null)
+    val sealWarning: StateFlow<String?> = _sealWarning.asStateFlow()
+
+    fun clearSealWarning() {
+        _sealWarning.value = null
+    }
 
     private val _saveFeedback = MutableStateFlow<String?>(null)
     val saveFeedback: StateFlow<String?> = _saveFeedback.asStateFlow()
@@ -258,7 +272,10 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
         }
         _sealState.value = SealState.Calibrating
         viewModelScope.launch {
-            val averagedFix = locationRepository.getAveragedFix()
+            val averagedFix = locationRepository.getAveragedFix(
+                onProgress = { count, accuracy -> _calibrationProgress.value = CalibrationProgress(count, accuracy) }
+            )
+            _calibrationProgress.value = null
             if (averagedFix == null) {
                 _sealState.value = SealState.NoGpsFix
                 return@launch
@@ -273,6 +290,7 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
                 longitude = averagedFix.longitude,
                 altitudeMeters = averagedFix.altitudeMeters,
                 sealPressureHpa = sealPressure,
+                sealAccuracyMeters = averagedFix.accuracyMeters,
                 unlockAtEpochMillis = unlockAtEpochMillis,
                 unlockRadiusMeters = unlockRadiusMeters,
                 environmentalLock = environmentalLock,
@@ -282,6 +300,9 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
                 attachmentMimeType = attachment?.mimeType
             )
             _sealState.value = SealState.Success
+            if (unlockRadiusMeters < averagedFix.accuracyMeters) {
+                _sealWarning.value = "⚠️ Precisão alcançada foi ±${averagedFix.accuracyMeters.toInt()}m, maior que o raio escolhido (${unlockRadiusMeters.toInt()}m). Pode ser difícil desbloquear exatamente aqui — o local e o raio ficam fixos, então guarda essa cápsula sabendo disso, e tenta selar as próximas de um ponto mais aberto (longe de prédios) se possível."
+            }
 
             // Se estiver logado, sobe a imagem JÁ CIFRADA (nunca a original em
             // texto claro) pra nuvem em segundo plano — falha aqui nunca afeta
@@ -309,11 +330,12 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
             val token = authRepository.getIdToken() ?: return@launch
             try {
                 val bytes = BackupManager.export(capsules.value, passphrase)
-                cloudStorageRepository.upload("$uid/backup.glbk", bytes, "application/octet-stream", token)
+                when (val result = cloudStorageRepository.upload("$uid/backup.glbk", bytes, "application/octet-stream", token)) {
+                    is CloudResult.Success -> { /* silencioso no sucesso — não precisa incomodar */ }
+                    is CloudResult.Failure -> _backupFeedback.value = "Sincronização automática falhou: ${result.reason}"
+                }
             } catch (e: Exception) {
-                // Sincronização automática silenciosa — falha aqui não deve
-                // incomodar quem só quer selar uma cápsula. O botão manual em
-                // Configurações continua disponível como reforço.
+                _backupFeedback.value = "Sincronização automática falhou: ${e.message}"
             }
         }
     }
@@ -366,11 +388,13 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
             } catch (e: Exception) {
                 return@launch
             }
-            cloudStorageRepository.upload("$uid/images/$capsuleId.enc", encryptedBytes, "application/octet-stream", token)
+            val result = cloudStorageRepository.upload("$uid/images/$capsuleId.enc", encryptedBytes, "application/octet-stream", token)
+            if (result is CloudResult.Failure) {
+                _backupFeedback.value = "Upload da imagem pra nuvem falhou: ${result.reason}"
+            }
         }
     }
 
-    /** Colhe uma única leitura do barômetro (quando disponível), com timeout curto. */
     /**
      * Colhe uma única leitura do barômetro (quando disponível), com timeout
      * curto. Usa firstOrNull() — não first() — de propósito: em aparelhos
@@ -428,8 +452,11 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
         }
         _isCalibratingUnlock.value = true
         viewModelScope.launch {
-            val fix = locationRepository.getAveragedFix()
+            val fix = locationRepository.getAveragedFix(
+                onProgress = { count, accuracy -> _calibrationProgress.value = CalibrationProgress(count, accuracy) }
+            )
             _isCalibratingUnlock.value = false
+            _calibrationProgress.value = null
             if (fix == null) {
                 _unlockResult.value = UnlockResult.NoGpsFix
                 return@launch
@@ -550,8 +577,10 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
             }
             try {
                 val bytes = BackupManager.export(capsules.value, passphrase)
-                val success = cloudStorageRepository.upload("$uid/backup.glbk", bytes, "application/octet-stream", token)
-                _backupFeedback.value = if (success) "Backup enviado pra nuvem com sucesso." else "Não foi possível enviar — confere a conexão."
+                when (val result = cloudStorageRepository.upload("$uid/backup.glbk", bytes, "application/octet-stream", token)) {
+                    is CloudResult.Success -> _backupFeedback.value = "Backup enviado pra nuvem com sucesso."
+                    is CloudResult.Failure -> _backupFeedback.value = "Não foi possível enviar: ${result.reason}"
+                }
             } catch (e: Exception) {
                 _backupFeedback.value = "Erro ao gerar backup — tenta de novo."
             }
@@ -576,10 +605,12 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
                 _backupFeedback.value = "Sessão expirada — entra de novo."
                 return@launch
             }
-            val backupBytes = cloudStorageRepository.download("$uid/backup.glbk", token)
-            if (backupBytes == null) {
-                _backupFeedback.value = "Nenhum backup encontrado na nuvem pra essa conta."
-                return@launch
+            val backupBytes = when (val result = cloudStorageRepository.download("$uid/backup.glbk", token)) {
+                is CloudResult.Success -> result.value
+                is CloudResult.Failure -> {
+                    _backupFeedback.value = "Não foi possível baixar o backup: ${result.reason}"
+                    return@launch
+                }
             }
             val restored = BackupManager.import(backupBytes, passphrase)
             if (restored == null) {
@@ -591,10 +622,10 @@ class GeoLockViewModel(application: Application) : AndroidViewModel(application)
             restored.forEach { capsule ->
                 var toInsert = capsule
                 if (capsule.attachmentFileName != null) {
-                    val imageBytes = cloudStorageRepository.download("$uid/images/${capsule.id}.enc", token)
-                    if (imageBytes != null) {
+                    val imageResult = cloudStorageRepository.download("$uid/images/${capsule.id}.enc", token)
+                    if (imageResult is CloudResult.Success) {
                         val localFile = File(getApplication<Application>().filesDir, "capsule_${capsule.id}.attachment.enc")
-                        localFile.writeBytes(imageBytes)
+                        localFile.writeBytes(imageResult.value)
                         toInsert = capsule.copy(encryptedMediaPath = localFile.absolutePath)
                         imagesRestored++
                     }

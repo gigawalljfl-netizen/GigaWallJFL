@@ -4,6 +4,7 @@ package com.gigawalljfl.geolock.ui.screens
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -40,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.gigawalljfl.geolock.data.db.Difficulty
 import com.gigawalljfl.geolock.data.db.EnvironmentalLock
@@ -55,10 +57,20 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun SealCapsuleScreen(viewModel: GeoLockViewModel, onDone: () -> Unit) {
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val sealState by viewModel.sealState.collectAsState()
     val fix by viewModel.currentFix.collectAsState()
+    val calibrationProgress by viewModel.calibrationProgress.collectAsState()
     val isProcessingImage by viewModel.isProcessingImage.collectAsState()
+    val sealWarning by viewModel.sealWarning.collectAsState()
+
+    LaunchedEffect(sealWarning) {
+        sealWarning?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            viewModel.clearSealWarning()
+        }
+    }
 
     var title by remember { mutableStateOf("") }
     var hint by remember { mutableStateOf("") }
@@ -248,8 +260,13 @@ fun SealCapsuleScreen(viewModel: GeoLockViewModel, onDone: () -> Unit) {
 
         if (sealState is SealState.Calibrating) {
             Spacer(Modifier.height(8.dp))
+            val progress = calibrationProgress
             Text(
-                "Colhendo várias leituras de GPS pra fixar a posição com mais precisão — leva só alguns segundos.",
+                if (progress != null) {
+                    "Calibrando… ${progress.sampleCount} leitura(s), melhor precisão até agora: ±${progress.bestAccuracyMeters.toInt()}m"
+                } else {
+                    "Colhendo leituras de GPS pra fixar a posição com mais precisão…"
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = NeonCyan
             )

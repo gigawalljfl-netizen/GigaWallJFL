@@ -52,6 +52,7 @@ fun CapsuleDetailScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
     val saveFeedback by viewModel.saveFeedback.collectAsState()
     val fix by viewModel.currentFix.collectAsState()
     val isCalibrating by viewModel.isCalibratingUnlock.collectAsState()
+    val calibrationProgress by viewModel.calibrationProgress.collectAsState()
     val capsule = capsules.firstOrNull { it.id == selectedId }
 
     var isEditing by remember { mutableStateOf(false) }
@@ -153,6 +154,15 @@ fun CapsuleDetailScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
             style = MaterialTheme.typography.bodyMedium,
             color = NeonCyan
         )
+        capsule.sealAccuracyMeters?.let { sealAccuracy ->
+            val radiusTooTight = capsule.unlockRadiusMeters < sealAccuracy
+            Text(
+                "Raio: ${capsule.unlockRadiusMeters}m · Precisão no selamento: ±${sealAccuracy.toInt()}m" +
+                    if (radiusTooTight) " ⚠️ raio menor que a precisão alcançada" else "",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (radiusTooTight) Magenta else MatrixGreen
+            )
+        }
         Text(
             if (fix != null) GpsQuality.label(fix!!.accuracyMeters) else "🛰️ Aguardando sinal de GPS…",
             style = MaterialTheme.typography.labelSmall,
@@ -184,6 +194,15 @@ fun CapsuleDetailScreen(viewModel: GeoLockViewModel, onBack: () -> Unit) {
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(if (isCalibrating) "🎯 CALIBRANDO GPS…" else "TENTAR DESBLOQUEAR")
+        }
+        if (isCalibrating) {
+            Spacer(Modifier.height(4.dp))
+            val progress = calibrationProgress
+            Text(
+                if (progress != null) "${progress.sampleCount} leitura(s), melhor precisão até agora: ±${progress.bestAccuracyMeters.toInt()}m" else "Colhendo leituras de GPS…",
+                style = MaterialTheme.typography.labelSmall,
+                color = NeonCyan
+            )
         }
 
         Spacer(Modifier.height(16.dp))

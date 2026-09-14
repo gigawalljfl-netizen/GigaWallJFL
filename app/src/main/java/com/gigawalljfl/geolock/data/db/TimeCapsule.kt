@@ -38,6 +38,11 @@ data class TimeCapsule(
     // precisa via barômetro (quando o aparelho tem um). Null se o
     // dispositivo não tinha barômetro no momento de selar.
     val sealPressureHpa: Float? = null,
+    // Precisão de GPS (metros) efetivamente alcançada na calibração de
+    // selamento — guardada pra poder avisar depois se o raio de
+    // desbloqueio escolhido for menor que a precisão real que o GPS
+    // conseguiu naquele momento/local (perto de prédios, por exemplo).
+    val sealAccuracyMeters: Float? = null,
 
     // Raio de desbloqueio em metros (padrão da spec: 1.5m)
     val unlockRadiusMeters: Double = 1.5,

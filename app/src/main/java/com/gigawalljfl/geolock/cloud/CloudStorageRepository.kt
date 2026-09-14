@@ -19,6 +19,11 @@ object SupabaseConfig {
     const val BUCKET_NAME = "geolock-vault"
 }
 
+sealed class CloudResult<out T> {
+    data class Success<T>(val value: T) : CloudResult<T>()
+    data class Failure(val reason: String) : CloudResult<Nothing>()
+}
+
 /**
  * Fala diretamente com a API REST do Supabase Storage (sem SDK oficial —
  * evita puxar uma cadeia de dependências Kotlin Multiplatform que exigiria
@@ -32,6 +37,12 @@ object SupabaseConfig {
  * Convenção de caminho dentro do bucket: sempre prefixado pelo UID do
  * Firebase, batendo com a política de RLS (storage.foldername(name)[1] =
  * auth.uid()) — cada usuário só enxerga a própria pasta.
+ *
+ * IMPORTANTE: upload()/download() retornam CloudResult com o MOTIVO real
+ * da falha (código HTTP + corpo da resposta do Supabase) — antes disso, o
+ * erro era engolido em silêncio (só `false`/`null`), o que tornava
+ * impossível saber se o problema era rede, bucket errado, política de RLS
+ * rejeitando, ou token expirado.
  */
 class CloudStorageRepository {
     private val client = OkHttpClient.Builder()
@@ -40,8 +51,8 @@ class CloudStorageRepository {
         .writeTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    /** Envia bytes pra um caminho dentro do bucket. Retorna true se deu certo. */
-    fun upload(path: String, bytes: ByteArray, mimeType: String, idToken: String): Boolean {
+    /** Envia bytes pra um caminho dentro do bucket. */
+    fun upload(path: String, bytes: ByteArray, mimeType: String, idToken: String): CloudResult<Unit> {
         return try {
             val url = "${SupabaseConfig.SUPABASE_URL}/storage/v1/object/${SupabaseConfig.BUCKET_NAME}/$path"
             val body = bytes.toRequestBody(mimeType.toMediaTypeOrNull())
@@ -52,14 +63,22 @@ class CloudStorageRepository {
                 .addHeader("Authorization", "Bearer $idToken")
                 .addHeader("x-upsert", "true")
                 .build()
-            client.newCall(request).execute().use { response -> response.isSuccessful }
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    CloudResult.Success(Unit)
+                } else {
+                    CloudResult.Failure(describeHttpFailure(response.code, response.body?.string()))
+                }
+            }
         } catch (e: IOException) {
-            false
+            CloudResult.Failure("Falha de rede: ${e.message ?: e.javaClass.simpleName}")
+        } catch (e: Exception) {
+            CloudResult.Failure("Erro inesperado: ${e.message ?: e.javaClass.simpleName}")
         }
     }
 
-    /** Baixa bytes de um caminho dentro do bucket. Retorna null se não existir ou falhar. */
-    fun download(path: String, idToken: String): ByteArray? {
+    /** Baixa bytes de um caminho dentro do bucket. */
+    fun download(path: String, idToken: String): CloudResult<ByteArray> {
         return try {
             val url = "${SupabaseConfig.SUPABASE_URL}/storage/v1/object/${SupabaseConfig.BUCKET_NAME}/$path"
             val request = Request.Builder()
@@ -69,10 +88,29 @@ class CloudStorageRepository {
                 .addHeader("Authorization", "Bearer $idToken")
                 .build()
             client.newCall(request).execute().use { response ->
-                if (response.isSuccessful) response.body?.bytes() else null
+                if (response.isSuccessful) {
+                    val bytes = response.body?.bytes()
+                    if (bytes != null) CloudResult.Success(bytes) else CloudResult.Failure("Resposta vazia do servidor")
+                } else {
+                    CloudResult.Failure(describeHttpFailure(response.code, response.body?.string()))
+                }
             }
         } catch (e: IOException) {
-            null
+            CloudResult.Failure("Falha de rede: ${e.message ?: e.javaClass.simpleName}")
+        } catch (e: Exception) {
+            CloudResult.Failure("Erro inesperado: ${e.message ?: e.javaClass.simpleName}")
         }
+    }
+
+    private fun describeHttpFailure(code: Int, body: String?): String {
+        val hint = when (code) {
+            400 -> "requisição inválida"
+            401 -> "token do Firebase não autorizado — confere o Third-Party Auth no Supabase"
+            403 -> "acesso negado — confere a política de RLS do bucket"
+            404 -> "bucket ou arquivo não encontrado — confere o nome exato do bucket"
+            else -> "erro do servidor"
+        }
+        val snippet = body?.take(200) ?: ""
+        return "HTTP $code ($hint)${if (snippet.isNotBlank()) ": $snippet" else ""}"
     }
 }
