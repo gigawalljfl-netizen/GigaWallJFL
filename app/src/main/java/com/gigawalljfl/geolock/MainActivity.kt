@@ -9,11 +9,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -31,6 +33,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.gigawalljfl.geolock.ui.GeoLockViewModel
 import com.gigawalljfl.geolock.ui.screens.ArHudScreen
@@ -137,7 +140,24 @@ class MainActivity : FragmentActivity() {
                     val navController = rememberNavController()
                     val startDestination = if (AppPreferences.hasSeenOnboarding(context)) "radar" else "onboarding"
 
-                    NavHost(navController = navController, startDestination = startDestination) {
+                    // Limite de 500dp em quase toda tela — em telemóvel comum
+                    // (bem mais estreito que isso) não muda nada; evita que
+                    // conteúdo estique de forma esquisita em tablet. Mapa e
+                    // AR ficam de fora de propósito: são experiências de
+                    // tela cheia (câmera/mapa), que devem aproveitar todo o
+                    // espaço disponível em vez de ficar confinadas.
+                    val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
+                    val isFullBleedScreen = currentRoute == "map" || currentRoute == "ar"
+
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                        Box(
+                            modifier = if (isFullBleedScreen) {
+                                Modifier.fillMaxSize()
+                            } else {
+                                Modifier.fillMaxSize().widthIn(max = 500.dp)
+                            }
+                        ) {
+                            NavHost(navController = navController, startDestination = startDestination) {
                         composable("onboarding") {
                             OnboardingScreen(onDone = {
                                 AppPreferences.setHasSeenOnboarding(context)
@@ -213,6 +233,8 @@ class MainActivity : FragmentActivity() {
                                 viewModel = viewModel,
                                 onBack = { navController.popBackStack() }
                             )
+                        }
+                            }
                         }
                     }
                 }

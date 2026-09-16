@@ -233,3 +233,18 @@ Limite honesto, documentado no código: isto reduz o ruído aleatório do GPS, b
 Erros do Supabase estavam sendo engolidos em silêncio (`catch { false }`) — impossível saber se era rede, bucket errado, política de RLS rejeitando, ou token expirado. `CloudStorageRepository` agora retorna `CloudResult` com o motivo real (código HTTP + corpo da resposta do Supabase + uma dica específica pra cada código comum: 401/403/404). Upload/restauração manuais e automáticos mostram esse motivo exato em vez de "não está funcionando".
 
 Teste de novo e me manda a mensagem exata que aparecer — agora ela vai dizer o que está errado de verdade.
+
+## Mapa satélite, área offline, barra fixa, limite de largura (v2.6.0)
+
+### Mapa: dois modos + área offline real
+- **Modo satélite** novo: imagens aéreas via ESRI World Imagery (gratuito, sem precisar do Google Maps/Play Services/chave de API) — toggle 🗺️ Mapa / 🛰️ Satélite no canto superior direito do mapa.
+- **"Baixar área (2km) pra offline"**: usa o `CacheManager` nativo do osmdroid pra baixar os blocos de uma área delimitada (2km de raio, zoom 13-18) ao redor da posição atual, com progresso ao vivo. Isso é a versão REAL e sustentável de "mapa offline" — baixar o mundo inteiro no primeiro uso, como foi pedido originalmente, não é possível: são vários terabytes de dados, e o OpenStreetMap proíbe e bane download em massa. Isso cumpre o mesmo objetivo (usar sem internet depois) sem quebrar o serviço.
+- O cache de navegação normal (tudo que já foi visto no mapa) continua funcionando automaticamente como sempre, por cima disso.
+
+### Barra de navegação fixa
+Configurações, Mapa, Escanear QR e Selar cápsula saíram do topo do Radar e foram pra uma barra fixa na parte de baixo da tela (`Scaffold` + `bottomBar`) — posição que não é afetada por diferença de tamanho de tela.
+
+### Limite de largura de 500dp
+Todo o conteúdo do app agora tem um teto de 500dp de largura, centralizado — em qualquer telemóvel comum (bem mais estreito que isso) não muda nada visualmente; em tablet, evita que tudo estique de forma esquisita. Mapa e HUD de AR ficam de fora de propósito (são experiências de tela cheia — câmera e mapa devem aproveitar o espaço todo). O radar circular também ficou um pouco menor (360dp em vez de 420dp) — isso deixa mais espaço vertical de sobra em telas pequenas/baixas, que era provavelmente a causa real de "radar grande demais pra ver por completo" (a tela não tinha nenhuma rolagem antes).
+
+Texto continua seguindo o tamanho de fonte do sistema Android (nunca um valor fixo do app) — como já era antes, isso não mudou.

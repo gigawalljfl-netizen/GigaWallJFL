@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -110,26 +111,17 @@ fun RadarScreen(
         } else capsules
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text("GEOLOCK // RADAR TÁTICO", style = MaterialTheme.typography.titleLarge, color = NeonCyan)
-                Text(
-                    "${gamification.rank.emoji} ${gamification.rank.displayName}  ·  XP ${gamification.xp}  ·  🎖️ ${gamification.unlockedMedals.size}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MatrixGreen,
-                    modifier = Modifier.clickable { onOpenMedals() }
-                )
-            }
-            Row {
+    Scaffold(
+        bottomBar = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(PanelDark)
+                    .border(1.dp, MatrixGreen.copy(alpha = 0.3f))
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 IconButton(onClick = onOpenSettings) {
                     Icon(Icons.Filled.Settings, contentDescription = "Configurações", tint = NeonCyan)
                 }
@@ -144,57 +136,77 @@ fun RadarScreen(
                 }
             }
         }
-
-        Spacer(Modifier.height(8.dp))
-
-        Text(
-            if (fix != null) GpsQuality.label(fix!!.accuracyMeters) else "🛰️ Aguardando sinal de GPS — verifica se a localização foi autorizada",
-            style = MaterialTheme.typography.labelSmall,
-            color = if (fix != null) GpsQuality.color(fix!!.accuracyMeters) else Magenta
-        )
-        Text(
-            when (heading.source) {
-                HeadingSource.GPS_COURSE -> "🛰️ Rumo por GPS (mais confiável — caminhando)"
-                HeadingSource.COMPASS -> "🧭 Rumo por bússola" + if (compassAccuracy <= android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_LOW) " — baixa precisão, mexe o telemóvel em forma de 8" else ""
-                HeadingSource.UNAVAILABLE -> "⚠️ Sem bússola neste aparelho — anda alguns passos pra ativar o rumo por GPS"
-            },
-            style = MaterialTheme.typography.labelSmall,
-            color = when {
-                heading.source == HeadingSource.GPS_COURSE -> MatrixGreen
-                heading.source == HeadingSource.COMPASS && compassAccuracy > android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_LOW -> MatrixGreen
-                else -> Magenta
-            }
-        )
-
-        Spacer(Modifier.height(12.dp))
-
-        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            SonarRadarVisual(
-                capsules = sortedCapsules,
-                fix = fix,
-                heading = heading,
-                onSelectCapsule = onOpenCapsule
-            )
-        }
-
-        Spacer(Modifier.height(12.dp))
-
-        Text(
-            "CÁPSULAS DETECTADAS (${capsules.size})",
-            style = MaterialTheme.typography.labelSmall,
-            color = NeonCyan
-        )
-        Spacer(Modifier.height(8.dp))
-
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(sortedCapsules, key = { it.id }) { capsule ->
-                CapsuleCard(
-                    capsule = capsule,
-                    distanceMeters = fix?.let { LocationRepository.haversineMeters(capsule.sealLatitude, capsule.sealLongitude, it.latitude, it.longitude) },
-                    onOpen = { onOpenCapsule(capsule.id) },
-                    onAr = { onOpenAr(capsule.id) },
-                    onExport = { onExportQr(capsule.id) }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(16.dp)
+        ) {
+            Column {
+                Text("GEOLOCK // RADAR TÁTICO", style = MaterialTheme.typography.titleLarge, color = NeonCyan)
+                Text(
+                    "${gamification.rank.emoji} ${gamification.rank.displayName}  ·  XP ${gamification.xp}  ·  🎖️ ${gamification.unlockedMedals.size}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MatrixGreen,
+                    modifier = Modifier.clickable { onOpenMedals() }
                 )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                if (fix != null) GpsQuality.label(fix!!.accuracyMeters) else "🛰️ Aguardando sinal de GPS — verifica se a localização foi autorizada",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (fix != null) GpsQuality.color(fix!!.accuracyMeters) else Magenta
+            )
+            Text(
+                when (heading.source) {
+                    HeadingSource.GPS_COURSE -> "🛰️ Rumo por GPS (mais confiável — caminhando)"
+                    HeadingSource.COMPASS -> "🧭 Rumo por bússola" + if (compassAccuracy <= android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_LOW) " — baixa precisão, mexe o telemóvel em forma de 8" else ""
+                    HeadingSource.UNAVAILABLE -> "⚠️ Sem bússola neste aparelho — anda alguns passos pra ativar o rumo por GPS"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = when {
+                    heading.source == HeadingSource.GPS_COURSE -> MatrixGreen
+                    heading.source == HeadingSource.COMPASS && compassAccuracy > android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_LOW -> MatrixGreen
+                    else -> Magenta
+                }
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                SonarRadarVisual(
+                    capsules = sortedCapsules,
+                    fix = fix,
+                    heading = heading,
+                    onSelectCapsule = onOpenCapsule
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            Text(
+                "CÁPSULAS DETECTADAS (${capsules.size})",
+                style = MaterialTheme.typography.labelSmall,
+                color = NeonCyan
+            )
+            Spacer(Modifier.height(8.dp))
+
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(sortedCapsules, key = { it.id }) { capsule ->
+                    CapsuleCard(
+                        capsule = capsule,
+                        distanceMeters = fix?.let { LocationRepository.haversineMeters(capsule.sealLatitude, capsule.sealLongitude, it.latitude, it.longitude) },
+                        onOpen = { onOpenCapsule(capsule.id) },
+                        onAr = { onOpenAr(capsule.id) },
+                        onExport = { onExportQr(capsule.id) }
+                    )
+                }
             }
         }
     }
@@ -227,7 +239,7 @@ private fun SonarRadarVisual(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .widthIn(max = 420.dp)
+            .widthIn(max = 360.dp)
             .aspectRatio(1f)
             .background(PanelDark, RoundedCornerShape(999.dp))
             .border(1.dp, MatrixGreen.copy(alpha = 0.4f), RoundedCornerShape(999.dp))
