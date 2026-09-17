@@ -36,7 +36,7 @@ import com.gigawalljfl.geolock.ui.theme.NeonCyan
 import com.gigawalljfl.geolock.ui.theme.PanelDark
 import org.osmdroid.tileprovider.cachemanager.CacheManager
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
-import org.osmdroid.tileprovider.tilesource.XYZTileSource
+import org.osmdroid.tileprovider.tilesource.XYTileSource
 import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.util.MapTileIndex
@@ -54,10 +54,10 @@ enum class MapTileMode { STREET, SATELLITE }
  * imagens aéreas, sem precisar do Google Maps (que exigiria Play
  * Services + chave de API). A ordem do caminho é z/y/x, diferente do
  * padrão z/x/y do OpenStreetMap — por isso a URL é montada manualmente
- * em vez de usar o formato automático do XYZTileSource.
+ * em vez de usar o formato automático do XYTileSource.
  */
-private fun buildSatelliteTileSource(): XYZTileSource {
-    return object : XYZTileSource(
+private fun buildSatelliteTileSource(): XYTileSource {
+    return object : XYTileSource(
         "ESRIWorldImagery",
         0, 19, 256, ".jpg",
         arrayOf("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/")

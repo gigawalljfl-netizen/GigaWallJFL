@@ -251,3 +251,6 @@ Texto continua seguindo o tamanho de fonte do sistema Android (nunca um valor fi
 
 ## Atribuição de mapa (v2.6.1)
 Adicionada atribuição visível no canto do mapa — "© OpenStreetMap contributors" no modo Mapa, créditos do ESRI no modo Satélite. Não é opcional: é condição de uso gratuito de ambos os serviços.
+
+## Correção de build: nome de classe errado (v2.6.2)
+🐛 `XYZTileSource` não existe no osmdroid — o nome certo é `XYTileSource` (sem "Z"). Corrigido em `MapScreen.kt` (import + fonte de satélite do ESRI). Causava falha de compilação total.
