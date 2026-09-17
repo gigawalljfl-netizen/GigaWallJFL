@@ -248,3 +248,6 @@ Configurações, Mapa, Escanear QR e Selar cápsula saíram do topo do Radar e f
 Todo o conteúdo do app agora tem um teto de 500dp de largura, centralizado — em qualquer telemóvel comum (bem mais estreito que isso) não muda nada visualmente; em tablet, evita que tudo estique de forma esquisita. Mapa e HUD de AR ficam de fora de propósito (são experiências de tela cheia — câmera e mapa devem aproveitar o espaço todo). O radar circular também ficou um pouco menor (360dp em vez de 420dp) — isso deixa mais espaço vertical de sobra em telas pequenas/baixas, que era provavelmente a causa real de "radar grande demais pra ver por completo" (a tela não tinha nenhuma rolagem antes).
 
 Texto continua seguindo o tamanho de fonte do sistema Android (nunca um valor fixo do app) — como já era antes, isso não mudou.
+
+## Atribuição de mapa (v2.6.1)
+Adicionada atribuição visível no canto do mapa — "© OpenStreetMap contributors" no modo Mapa, créditos do ESRI no modo Satélite. Não é opcional: é condição de uso gratuito de ambos os serviços.

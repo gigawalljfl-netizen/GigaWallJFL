@@ -217,6 +217,18 @@ fun MapScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
 
+        // Atribuição exigida pelos termos de uso do OpenStreetMap e do ESRI
+        // World Imagery — não é opcional, é condição de uso gratuito de ambos.
+        Text(
+            if (tileMode == MapTileMode.SATELLITE) "Imagens: Esri, Maxar, Earthstar Geographics" else "© OpenStreetMap contributors",
+            color = NeonCyan.copy(alpha = 0.7f),
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .background(PanelDark.copy(alpha = 0.6f))
+                .padding(horizontal = 6.dp, vertical = 2.dp)
+        )
+
         TextButton(
             onClick = onBack,
             modifier = Modifier.align(Alignment.TopStart).padding(12.dp)
