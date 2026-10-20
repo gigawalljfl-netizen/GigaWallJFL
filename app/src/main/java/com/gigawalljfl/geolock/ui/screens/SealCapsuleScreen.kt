@@ -1,0 +1,314 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
+package com.gigawalljfl.geolock.ui.screens
+
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import com.gigawalljfl.geolock.data.db.Difficulty
+import com.gigawalljfl.geolock.data.db.EnvironmentalLock
+import com.gigawalljfl.geolock.location.GpsQuality
+import com.gigawalljfl.geolock.ui.GeoLockViewModel
+import com.gigawalljfl.geolock.ui.PendingAttachment
+import com.gigawalljfl.geolock.ui.SealState
+import com.gigawalljfl.geolock.ui.theme.MatrixGreen
+import com.gigawalljfl.geolock.ui.theme.Magenta
+import com.gigawalljfl.geolock.ui.theme.NeonCyan
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+@Composable
+fun SealCapsuleScreen(viewModel: GeoLockViewModel, onDone: () -> Unit) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val sealState by viewModel.sealState.collectAsState()
+    val fix by viewModel.currentFix.collectAsState()
+    val calibrationProgress by viewModel.calibrationProgress.collectAsState()
+    val isProcessingImage by viewModel.isProcessingImage.collectAsState()
+    val sealWarning by viewModel.sealWarning.collectAsState()
+
+    LaunchedEffect(sealWarning) {
+        sealWarning?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            viewModel.clearSealWarning()
+        }
+    }
+
+    var title by remember { mutableStateOf("") }
+    var hint by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf("") }
+    var radius by remember { mutableStateOf("1.5") }
+    var delayHours by remember { mutableStateOf("0") }
+    var envLock by remember { mutableStateOf(EnvironmentalLock.NONE) }
+    var difficulty by remember { mutableStateOf(Difficulty.RECRUTA) }
+    var attachment by remember { mutableStateOf<PendingAttachment?>(null) }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicturePreview()
+    ) { bitmap: Bitmap? ->
+        bitmap?.let { bmp ->
+            coroutineScope.launch {
+                attachment = viewModel.compressBitmapForAttachment(bmp)
+            }
+        }
+    }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        uri?.let {
+            coroutineScope.launch {
+                attachment = viewModel.compressImageFromUri(it)
+            }
+        }
+    }
+
+    // Só volta pra tela anterior DEPOIS de confirmar que a cápsula foi
+    // realmente gravada — evita a sensação de "não guardou nada" de
+    // sair da tela sem saber se o selamento funcionou.
+    LaunchedEffect(sealState) {
+        if (sealState is SealState.Success) {
+            delay(700)
+            viewModel.resetSealState()
+            onDone()
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
+    ) {
+        Text("SELAR NOVA CÁPSULA", style = MaterialTheme.typography.titleLarge, color = NeonCyan)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            if (fix != null) GpsQuality.label(fix!!.accuracyMeters) else "🛰️ Aguardando sinal de GPS…",
+            style = MaterialTheme.typography.labelSmall,
+            color = if (fix != null) GpsQuality.color(fix!!.accuracyMeters) else Magenta
+        )
+        Spacer(Modifier.height(16.dp))
+
+        OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Título") }, modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(value = hint, onValueChange = { hint = it }, label = { Text("Pista de busca") }, modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = message,
+            onValueChange = { message = it },
+            label = { Text("Mensagem secreta") },
+            modifier = Modifier.fillMaxWidth().height(120.dp)
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = radius,
+            onValueChange = { radius = it },
+            label = { Text("Raio de desbloqueio (m)") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = delayHours,
+            onValueChange = { delayHours = it },
+            label = { Text("Bloqueio temporal (horas a partir de agora)") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(Modifier.height(12.dp))
+        Text("Bloqueio ambiental", style = MaterialTheme.typography.labelSmall, color = MatrixGreen)
+        EnumSelector(
+            options = EnvironmentalLock.entries.toList(),
+            selected = envLock,
+            label = { it.name },
+            onSelect = { envLock = it }
+        )
+
+        Spacer(Modifier.height(12.dp))
+        Text("Dificuldade", style = MaterialTheme.typography.labelSmall, color = MatrixGreen)
+        EnumSelector(
+            options = Difficulty.entries.toList(),
+            selected = difficulty,
+            label = { it.name },
+            onSelect = { difficulty = it }
+        )
+
+        Spacer(Modifier.height(12.dp))
+        Text("Imagem de referência (opcional)", style = MaterialTheme.typography.labelSmall, color = MatrixGreen)
+        Text(
+            "Pra quando o local é algo específico — um bar, um banco, uma loja. Só imagens: tirar foto agora ou escolher da galeria.",
+            style = MaterialTheme.typography.labelSmall,
+            color = NeonCyan
+        )
+        Spacer(Modifier.height(4.dp))
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            OutlinedButton(onClick = { cameraLauncher.launch(null) }, enabled = !isProcessingImage) {
+                Text("📷 TIRAR FOTO")
+            }
+            Spacer(Modifier.width(8.dp))
+            OutlinedButton(
+                onClick = {
+                    val request = androidx.activity.result.PickVisualMediaRequest.Builder()
+                        .setMediaType(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        .build()
+                    galleryLauncher.launch(request)
+                },
+                enabled = !isProcessingImage
+            ) {
+                Text("🖼️ GALERIA")
+            }
+        }
+
+        if (isProcessingImage) {
+            Spacer(Modifier.height(8.dp))
+            Text("Comprimindo imagem…", style = MaterialTheme.typography.labelSmall, color = NeonCyan)
+        }
+
+        attachment?.let { att ->
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                val bmp = remember(att) { BitmapFactory.decodeByteArray(att.bytes, 0, att.bytes.size) }
+                bmp?.let {
+                    Image(
+                        bitmap = it.asImageBitmap(),
+                        contentDescription = "Imagem selecionada",
+                        modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp))
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
+                Column {
+                    Text(att.fileName, style = MaterialTheme.typography.bodyMedium, color = NeonCyan)
+                    Text(
+                        "${att.bytes.size / 1024} KB (comprimida)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MatrixGreen
+                    )
+                }
+            }
+        }
+        Text(
+            "A imagem é cifrada com a mesma chave espaço-temporal da mensagem — só é revelada junto com ela.",
+            style = MaterialTheme.typography.labelSmall,
+            color = NeonCyan
+        )
+
+        Spacer(Modifier.height(24.dp))
+        Button(
+            onClick = {
+                val delayMs = (delayHours.toDoubleOrNull() ?: 0.0) * 3_600_000L
+                val unlockAt = System.currentTimeMillis() + delayMs.toLong()
+                viewModel.sealCapsule(
+                    title = title.ifBlank { "Cápsula sem título" },
+                    hint = hint,
+                    secretMessage = message,
+                    unlockAtEpochMillis = unlockAt,
+                    unlockRadiusMeters = radius.toDoubleOrNull() ?: 1.5,
+                    environmentalLock = envLock,
+                    difficulty = difficulty,
+                    attachment = attachment
+                )
+            },
+            enabled = sealState !is SealState.Saving && sealState !is SealState.Calibrating,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                when (sealState) {
+                    is SealState.Calibrating -> "🎯 CALIBRANDO GPS…"
+                    is SealState.Saving -> "SELANDO…"
+                    is SealState.Success -> "✅ SELADA!"
+                    else -> "SELAR NO ESPAÇO-TEMPO"
+                }
+            )
+        }
+
+        if (sealState is SealState.Calibrating) {
+            Spacer(Modifier.height(8.dp))
+            val progress = calibrationProgress
+            Text(
+                if (progress != null) {
+                    "Calibrando… ${progress.sampleCount} leitura(s), melhor precisão até agora: ±${progress.bestAccuracyMeters.toInt()}m"
+                } else {
+                    "Colhendo leituras de GPS pra fixar a posição com mais precisão…"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = NeonCyan
+            )
+        }
+
+        if (sealState is SealState.NoGpsFix) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "⚠️ Ainda não há sinal de GPS suficiente. Sai a céu aberto e espera alguns segundos antes de tentar de novo.",
+                style = MaterialTheme.typography.labelSmall,
+                color = Magenta
+            )
+        }
+    }
+}
+
+@Composable
+private fun <T> EnumSelector(
+    options: List<T>,
+    selected: T,
+    label: (T) -> String,
+    onSelect: (T) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+        OutlinedTextField(
+            value = label(selected),
+            onValueChange = {},
+            readOnly = true,
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier.fillMaxWidth()
+        )
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(label(option)) },
+                    onClick = {
+                        onSelect(option)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
